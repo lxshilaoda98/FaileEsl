@@ -1,0 +1,15 @@
+{
+  "EslConfig": {
+    "fshost": "localhost",
+    "fsport": "8021",
+    "password": "ClueCon",
+    "timeout": 10
+  },
+  "IVRConfig": {
+    "dir": "C:\\Program Files\\FreeSWITCH"
+  },
+  "AppConfig": {
+    "port": ":8000",
+    "DataBase": "root:root@tcp(127.0.0.1:3307)/freeswitch?parseTime=true"
+  }
+}
