@@ -5,7 +5,7 @@ import (
 	"fmt"
 	. "github.com/0x19/goesl"
 	"github.com/fsnotify/fsnotify"
-	db "github.com/n1n1n1_owner/FaileEsl/database"
+	//db "github.com/n1n1n1_owner/FaileEsl/database"
 	"github.com/spf13/viper"
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"os"
@@ -66,7 +66,6 @@ func ConnectionEsl() (config *viper.Viper) {
 		client.Send("events json ALL")
 		fmt.Println("初始化map集合")
 		countryCapitalMap := make(map[string]SipModel)
-
 		for {
 			msg, err := client.ReadMessage()
 			if err != nil {
@@ -79,9 +78,10 @@ func ConnectionEsl() (config *viper.Viper) {
 			switch msg.Headers["Event-Name"] {
 			case "HEARTBEAT":
 				//fmt.Println("心跳事件")
+				//心跳的时候看下集合数据
+				fmt.Println("map集合为：", countryCapitalMap)
 			case "CUSTOM":
 				ipName := ""
-				d:=-1
 				if msg.Headers["contact"] != "" {
 					fmt.Println(msg.Headers["contact"])
 					fmt.Println(strings.Split(msg.Headers["contact"], "@")[0])
@@ -92,7 +92,8 @@ func ConnectionEsl() (config *viper.Viper) {
 				case "sofia::pre_register":
 					fmt.Printf("【预注册】来自ip.>%v .注册sip账号：%v \n 联系地址：%v 域：%v \n 客户端：%v \n",
 						ipName, msg.Headers["from-user"], msg.Headers["contact"], msg.Headers["user_context"], msg.Headers["user-agent"])
-					d = GetUserID(msg.Headers["from-user"])
+					//GetUserID(msg.Headers["from-user"])
+					//AddFw(msg,countryCapitalMap,ipName)
 				case "sofia::register_attempt":
 					fmt.Printf("【注册尝试】来自ip.>%v .注册sip账号：%v \n 联系地址：%v 域：%v \n 客户端：%v \n",
 						ipName, msg.Headers["from-user"], msg.Headers["contact"], msg.Headers["user_context"], msg.Headers["user-agent"])
@@ -108,53 +109,12 @@ func ConnectionEsl() (config *viper.Viper) {
 					fmt.Printf("【账号错误】注册ip.>%v .注册sip账号：%v \n 客户端：%v .类型：%v \n",
 						msg.Headers["to-host"], msg.Headers["to-user"], msg.Headers["user-agent"], msg.Headers["registration-type"])
 					//d = GetUserID(msg.Headers["from-user"])
+					if msg.Headers["network-ip"] != "" {
+						ipName = msg.Headers["network-ip"]
+						AddFw(msg, countryCapitalMap, ipName)
+					}
 				default:
 					//Info("未知事件..>",msg)
-				}
-				if d == 0 {
-					fmt.Println("发现本次请求为异常数据====>添加/修改map集合！")
-					sip := SipModel{
-						ip:        "",
-						userAgent: "",
-						contact:   "",
-						count:     0,
-					}
-					capital, ok := countryCapitalMap[ipName]
-					if ok {
-						fmt.Println("集合数量为===>",len(countryCapitalMap))
-						fmt.Println(ipName, "的发起了异常请求...")
-						sip.count = capital.count + 1
-						sip.ip = capital.ip
-						sip.userAgent = capital.userAgent
-						sip.contact = capital.contact
-						countryCapitalMap[ipName] = sip
-						fmt.Println(ipName,"的异常请求总数量：", countryCapitalMap[ipName].count)
-						if countryCapitalMap[ipName].count >= 5 {
-							fmt.Println("限制ip：", countryCapitalMap[ipName].ip,"..>")
-							delete(countryCapitalMap, ipName)
-							addfw(capital.ip)
-							fmt.Println("删除..>",ipName,"..现在集合长度为：",len(countryCapitalMap))
-						}
-					} else {
-						fmt.Println(ipName, ",这个IP不存在！")
-						sip.ip = ipName
-						sip.contact = msg.Headers["contact"]
-						sip.userAgent = msg.Headers["user-agent"]
-						countryCapitalMap[ipName] = sip
-						fmt.Println("添加到map集合=====>end")
-					}
-					//{
-					//	sip.ip=ipName
-					//	sip.contact=msg.Headers["contact"]
-					//	sip.userAgent=msg.Headers["user-agent"]
-					//	fmt.Println("sip==",sip.ip,sip.contact,sip.userAgent)
-					//	countryCapitalMap[ipName]=sip
-					//	fmt.Println("添加到map集合=====>")
-					//	fmt.Println(countryCapitalMap[ipName])
-					//}
-
-					//fmt.Println("已经存在数据.>重复次数为：",countryCapitalMap[ipName].count)
-
 				}
 			default:
 				Info("Got new message: %s", msg)
@@ -165,13 +125,46 @@ func ConnectionEsl() (config *viper.Viper) {
 	return
 }
 
-func GetUserID(user string) (Number int) {
-	sql := "select count(*) as Number from sipuser where SIPUser =?"
-	rows := db.SqlDB.QueryRow(sql, user)
-	rows.Scan(&Number)
-
-	return
+func AddFw(msg *Message, countryCapitalMap map[string]SipModel, ipName string) {
+	fmt.Println("发现本次请求为异常数据====>添加/修改map集合！")
+	sip := SipModel{
+		ip:        "",
+		userAgent: "",
+		contact:   "",
+		count:     0,
+	}
+	capital, ok := countryCapitalMap[ipName]
+	if ok {
+		fmt.Println("集合数量为===>", len(countryCapitalMap))
+		fmt.Println(ipName, "的发起了异常请求...")
+		sip.count = capital.count + 1
+		sip.ip = capital.ip
+		sip.userAgent = capital.userAgent
+		sip.contact = capital.contact
+		countryCapitalMap[ipName] = sip
+		fmt.Println(ipName, "的异常请求总数量：", countryCapitalMap[ipName].count)
+		if countryCapitalMap[ipName].count >= 5 {
+			fmt.Println("限制ip：", countryCapitalMap[ipName].ip, "..>")
+			delete(countryCapitalMap, ipName)
+			addfw(capital.ip)
+			fmt.Println("删除..>", ipName, "..现在集合长度为：", len(countryCapitalMap))
+		}
+	} else {
+		fmt.Println(ipName, ",这个IP不存在！")
+		sip.ip = ipName
+		sip.contact = msg.Headers["contact"]
+		sip.userAgent = msg.Headers["user-agent"]
+		countryCapitalMap[ipName] = sip
+		fmt.Println("添加到map集合=====>end")
+	}
 }
+
+//func GetUserID(user string) (Number int) {
+//	sql := "select count(*) as Number from sipuser where SIPUser =?"
+//	rows := db.SqlDB.QueryRow(sql, user)
+//	rows.Scan(&Number)
+//	return
+//}
 func addfw(ip string) {
 	sysType := runtime.GOOS
 	fmt.Println("当前系统：", sysType)
