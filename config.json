@@ -3,7 +3,8 @@
     "fshost": "localhost",
     "fsport": "8021",
     "password": "ClueCon",
-    "timeout": 10
+    "timeout": 10,
+    "allowIP": ["192.168.101.166","192.168.101.157"]
   },
   "IVRConfig": {
     "dir": "C:\\Program Files\\FreeSWITCH"

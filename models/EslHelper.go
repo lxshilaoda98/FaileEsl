@@ -19,6 +19,7 @@ type EslConfig struct {
 	fsport   uint
 	password string
 	timeout  int
+	allowIP  []string
 }
 
 type SipModel struct {
@@ -51,10 +52,9 @@ func ConnectionEsl() (config *viper.Viper) {
 	if err := config.Unmarshal(&configjson); err != nil {
 		fmt.Println(err)
 	}
-	fmt.Printf("connection User:%s, Port:%d , PWd:%s , Tiemout:%d \n",
+	fmt.Printf("connection User:%s, Port:%d , PWd:%s , Tiemout:%d \n , ip:%v",
 		config.GetString("EslConfig.fshost"), config.GetUint("EslConfig.fsport"),
-		config.GetString("EslConfig.password"), config.GetInt("EslConfig.timeout"))
-
+		config.GetString("EslConfig.password"), config.GetInt("EslConfig.timeout"), config.GetStringSlice("EslConfig.allowIP"))
 	client, err := NewClient(config.GetString("EslConfig.fshost"), config.GetUint("EslConfig.fsport"),
 		config.GetString("EslConfig.password"), config.GetInt("EslConfig.timeout"))
 	if err != nil {
@@ -65,6 +65,8 @@ func ConnectionEsl() (config *viper.Viper) {
 		go client.Handle()
 		client.Send("events json ALL")
 		fmt.Println("初始化map集合")
+		allowIP := config.GetStringSlice("EslConfig.allowIP")
+
 		countryCapitalMap := make(map[string]SipModel)
 		for {
 			msg, err := client.ReadMessage()
@@ -77,9 +79,19 @@ func ConnectionEsl() (config *viper.Viper) {
 			}
 			switch msg.Headers["Event-Name"] {
 			case "HEARTBEAT":
-				//fmt.Println("心跳事件")
+				fmt.Println("============心跳事件begin")
 				//心跳的时候看下集合数据
 				fmt.Println("map集合为：", countryCapitalMap)
+				fmt.Println("查看集合中是否有白名单数据.")
+				for _, v := range allowIP {
+					//查看白名单是否存在黑名单集合中，如果存在就删除掉
+					_, ok := countryCapitalMap[v]
+					if ok {
+						fmt.Println("存在的白名单，删除集合数据")
+						delete(countryCapitalMap, v)
+					}
+				}
+				fmt.Println("============心跳事件end")
 			case "CUSTOM":
 				ipName := ""
 				if msg.Headers["contact"] != "" {
