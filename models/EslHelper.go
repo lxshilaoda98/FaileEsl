@@ -5,6 +5,7 @@ import (
 	"fmt"
 	. "github.com/0x19/goesl"
 	"github.com/fsnotify/fsnotify"
+
 	//db "github.com/n1n1n1_owner/FaileEsl/database"
 	"github.com/spf13/viper"
 	"golang.org/x/text/encoding/simplifiedchinese"
@@ -12,6 +13,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	log "github.com/go-fastlog/fastlog"
 )
 
 type EslConfig struct {
@@ -31,6 +33,15 @@ type SipModel struct {
 
 //连接到FS，并监听数据
 func ConnectionEsl() (config *viper.Viper) {
+
+	outFile, err := os.OpenFile("log.txt", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	log.SetFlags(log.Flags()|log.Ldebug)   //设置默认的日志显示级别，不设置所有级别的日志都会被输出，并且不显示日志级别（为了和官方log包保持一致）
+
+	// 修改默认的日志输出对象
+	log.SetOutput(outFile)
 
 	config = viper.New()
 	config.AddConfigPath("./")
@@ -61,12 +72,12 @@ func ConnectionEsl() (config *viper.Viper) {
 		fmt.Println("connect Go Esl Failed Err.>", err)
 		return
 	} else {
-		fmt.Println("Connection Success ")
+		log.Info("Connection Success ")
 		go client.Handle()
 		client.Send("events json ALL")
-		fmt.Println("初始化map集合")
+		log.Info("初始化map集合")
 		allowIP := config.GetStringSlice("EslConfig.allowIP")
-
+		log.Info("白名单IP：",allowIP)
 		countryCapitalMap := make(map[string]SipModel)
 		for {
 			msg, err := client.ReadMessage()
@@ -81,8 +92,8 @@ func ConnectionEsl() (config *viper.Viper) {
 			case "HEARTBEAT":
 				fmt.Println("============心跳事件begin")
 				//心跳的时候看下集合数据
-				fmt.Println("map集合为：", countryCapitalMap)
-				fmt.Println("查看集合中是否有白名单数据.")
+				log.Info("map集合为：", countryCapitalMap)
+				log.Info("查看集合中是否有白名单数据.")
 				for _, v := range allowIP {
 					//查看白名单是否存在黑名单集合中，如果存在就删除掉
 					_, ok := countryCapitalMap[v]
@@ -91,21 +102,24 @@ func ConnectionEsl() (config *viper.Viper) {
 						delete(countryCapitalMap, v)
 					}
 				}
-				fmt.Println("============心跳事件end")
+				log.Info("============心跳事件end")
 			case "CUSTOM":
 				ipName := ""
 				if msg.Headers["contact"] != "" {
-					fmt.Println(msg.Headers["contact"])
-					fmt.Println(strings.Split(msg.Headers["contact"], "@")[0])
+					log.Info(msg.Headers["contact"])
+					log.Info(strings.Split(msg.Headers["contact"], "@")[0])
 					ipName = strings.Split(strings.Split(msg.Headers["contact"], "@")[1], ":")[0]
-					fmt.Println(ipName)
+					log.Info(ipName)
 				}
 				switch msg.Headers["Event-Subclass"] {
 				case "sofia::pre_register":
-					fmt.Printf("【预注册】来自ip.>%v .注册sip账号：%v \n 联系地址：%v 域：%v \n 客户端：%v \n",
+					log.Printf("【预注册】来自ip.>%v .注册sip账号：%v \n 联系地址：%v 域：%v \n 客户端：%v \n",
 						ipName, msg.Headers["from-user"], msg.Headers["contact"], msg.Headers["user_context"], msg.Headers["user-agent"])
 					//GetUserID(msg.Headers["from-user"])
 					//AddFw(msg,countryCapitalMap,ipName)
+					if msg.Headers["user-agent"] == "unknown" || msg.Headers["user-agent"] == "" {
+						AddFw(msg, countryCapitalMap, ipName)
+					}
 				case "sofia::register_attempt":
 					fmt.Printf("【注册尝试】来自ip.>%v .注册sip账号：%v \n 联系地址：%v 域：%v \n 客户端：%v \n",
 						ipName, msg.Headers["from-user"], msg.Headers["contact"], msg.Headers["user_context"], msg.Headers["user-agent"])
@@ -125,13 +139,32 @@ func ConnectionEsl() (config *viper.Viper) {
 						ipName = msg.Headers["network-ip"]
 						AddFw(msg, countryCapitalMap, ipName)
 					}
+				case "sofia::wrong_call_state" :
+					ipName = msg.Headers["network_ip"]
+					fmt.Println("错误的异常呼叫..>",ipName)
+					AddFw(msg, countryCapitalMap, ipName)
 				default:
-					//Info("未知事件..>",msg)
+					log.Infof("未知子事件..>%s",msg)
+				}
+			case "CHANNEL_CREATE":
+				if msg.Headers["variable_direction"] =="inbound" && msg.Headers["Caller-Context"] == "public" {
+					//本逻辑来禁止异常的呼叫ip，如果发现异常的呼叫就加入到黑名单中
+					log.Infof(" A leg Call FreeSwitch Inbound")
+					CallerAni := msg.Headers["Caller-ANI"]
+					CallNumber :=msg.Headers["Caller-Destination-Number"]
+					CallNetWork :=msg.Headers["Caller-Network-Addr"]
+					log.Infof("呼叫者%v , 被叫号码：%v",CallerAni,CallNumber)
+					if len(CallNumber) > 12 {
+						log.Infof("本次呼叫的号码可能异常..>暂时将ip：%v 加入到黑名单！",CallNetWork)
+						AddFw(msg, countryCapitalMap, CallNetWork)
+					}else{
+						log.Infof("呼叫Call：%v. DesCall:%v. CallerIP : %v",CallerAni,CallNumber,CallNetWork)
+					}
+
 				}
 			default:
-				Info("Got new message: %s", msg)
+				log.Infof("Got new message: %s", msg)
 			}
-
 		}
 	}
 	return

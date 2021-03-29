@@ -7,7 +7,9 @@ require (
 	github.com/denisenkom/go-mssqldb v0.0.0-20200910202707-1e08a3fab204
 	github.com/fsnotify/fsnotify v1.4.7
 	github.com/gin-gonic/gin v1.6.3
+	github.com/go-fastlog/fastlog v0.0.0-20181211062326-de7e639238fd
 	github.com/go-sql-driver/mysql v1.5.0
+	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/mkevac/debugcharts v0.0.0-20191222103121-ae1c48aa8615 // indirect
 	github.com/prometheus/client_golang v1.8.0 // indirect
