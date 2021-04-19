@@ -19,4 +19,5 @@ require (
 	golang.org/x/sys v0.0.0-20201117222635-ba5294a509c7 // indirect
 	golang.org/x/text v0.3.2
 	google.golang.org/protobuf v1.25.0 // indirect
+	github.com/go-redis/redis v6.15.9+incompatible
 )
