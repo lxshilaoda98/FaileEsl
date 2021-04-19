@@ -11,12 +11,13 @@ import _ "github.com/denisenkom/go-mssqldb"
 
 var SqlDB *sql.DB
 
-var DBDriver ="mysql" //<mysql/mssql>
+var DBDriver = "mysql" //<mysql/mssql>
 
 type AppConfig struct {
 	DataBase string
 }
-func GetIVRConfig()(config *viper.Viper) {
+
+func GetIVRConfig() (config *viper.Viper) {
 	config = viper.New()
 	config.AddConfigPath("./")
 	config.SetConfigName("config")
@@ -41,10 +42,10 @@ func GetIVRConfig()(config *viper.Viper) {
 func init() {
 	config := GetIVRConfig()
 	connString := ""
-	if DBDriver=="mssql"{
-		connString="server=127.0.0.1;port=1433;database=TF_LFT_CMS;user id=sa;password=sa@01;encrypt=disable"
-	}else if DBDriver =="mysql"{
-		connString=config.GetString("AppConfig.DataBase")
+	if DBDriver == "mssql" {
+		connString = "server=127.0.0.1;port=1433;database=TF_LFT_CMS;user id=sa;password=sa@01;encrypt=disable"
+	} else if DBDriver == "mysql" {
+		connString = config.GetString("AppConfig.DataBase")
 	}
 	var err error
 	SqlDB, err = sql.Open(DBDriver, connString)
