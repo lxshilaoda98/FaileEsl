@@ -454,3 +454,23 @@ func ErrConvertCN(key string) (HaHangupV HaHangupV) {
 	}
 	return
 }
+
+func ConvertCN(key string) (val string) {
+	switch key {
+	case "Available":
+		val = "空闲状态"
+	case "Logged Out":
+		val = "注销状态"
+	case "On Break":
+		val = "小休状态"
+	case "Idle":
+		val = "队列[空闲]"
+	case "Waiting":
+		val = "队列[等待]"
+	case "In a queue call":
+		val = "队列[在队列中呼叫]"
+	case "Receiving":
+		val = "队列[接听]"
+	}
+	return
+}

@@ -1,10 +1,10 @@
 {
   "EslConfig": {
-    "fshost": "192.168.101.166",
+    "fshost": "39.97.233.183",
     "fsport": "8021",
     "password": "1qaz@WSX..",
     "timeout": 10,
-    "allowIP": ["192.168.101.166","192.168.101.157"]
+    "allowIP": ["39.97.233.183","192.168.101.157"]
   },
   "IVRConfig": {
     "dir": "C:\\Program Files\\FreeSWITCH"

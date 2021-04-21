@@ -41,6 +41,10 @@ type CallModel struct {
 	CallNumber      string `json:"call_number"`
 	CalledNumber    string `json:"called_number"`
 	CallHangupCause string `json:"call_hangup_cause"`
+	AgentStatus     string `json:"agent_status"`
+	AgentStatusMsg  string `json:"agent_status_msg"`
+	AgentState      string `json:"agent_state"`
+	AgentStateMsg   string `json:"agent_state_msg"`
 }
 
 //连接到FS，并监听数据
@@ -135,12 +139,19 @@ func ConnectionEsl() (config *viper.Viper) {
 				case "sofia::unregister":
 					fmt.Printf("【注销账号】来自ip.>%v .注册sip账号：%v \n 联系地址：%v 域：%v \n 客户端：%v \n",
 						ipName, msg.Headers["from-user"], msg.Headers["contact"], msg.Headers["user_context"], msg.Headers["user-agent"])
+					callAgent := msg.Headers["from-user"]
+					CallModel := CallModel{}
+					CallModel.Event_type = "1401"
+					CallModel.Event_mess = "注销sip账号"
+					CallModel.Event_time = time.Now().Unix()
+					CallModel.CalledNumber = callAgent
+					InsertRedisMQ(callAgent, CallModel)
+
 				case "sofia::register":
 					fmt.Printf("【注册成功账号】来自ip.>%v .注册sip账号：%v \n 联系地址：%v 域：%v \n 客户端：%v \n",
 						ipName, msg.Headers["from-user"], msg.Headers["contact"], msg.Headers["user_context"], msg.Headers["user-agent"])
 					delete(countryCapitalMap, ipName)
 				case "sofia::register_failure":
-					fmt.Println("账号错误..>", msg)
 					fmt.Printf("【账号错误】注册ip.>%v .注册sip账号：%v \n 客户端：%v .类型：%v \n",
 						msg.Headers["to-host"], msg.Headers["to-user"], msg.Headers["user-agent"], msg.Headers["registration-type"])
 					//d = GetUserID(msg.Headers["from-user"])
@@ -148,6 +159,13 @@ func ConnectionEsl() (config *viper.Viper) {
 						ipName = msg.Headers["network-ip"]
 						AddFw(msg, countryCapitalMap, ipName)
 					}
+					callAgent := msg.Headers["to-user"]
+					CallModel := CallModel{}
+					CallModel.Event_type = "1402"
+					CallModel.Event_mess = "sip账号错误"
+					CallModel.Event_time = time.Now().Unix()
+					CallModel.CalledNumber = callAgent
+					InsertRedisMQ(callAgent, CallModel)
 				case "sofia::wrong_call_state":
 					ipName = msg.Headers["network_ip"]
 					fmt.Println("错误的异常呼叫..>", ipName)
@@ -186,17 +204,7 @@ func ConnectionEsl() (config *viper.Viper) {
 						CallModel.Event_time = time.Now().Unix()
 						CallModel.CallNumber = callAni
 						CallModel.CalledNumber = callAgent
-						insRedisByte, err := json.Marshal(CallModel)
-						if err != nil {
-							fmt.Println("String Convert Byte Err..>", err)
-						}
-						res, err := db.ClientRedis.RPush("call_event_msg_list_"+callAgent, string(insRedisByte)).Result()
-						if err != nil {
-							fmt.Println("RPush Err..>", err)
-						} else {
-							fmt.Println("[呼叫进入]insert Redis Success! res >", res)
-							db.ClientRedis.Expire("call_event_msg_list_"+callAgent, time.Hour*2)
-						}
+						InsertRedisMQ(callAgent, CallModel)
 					case "bridge-agent-fail":
 						callHangup := msg.Headers["CC-Hangup-Cause"]
 						if callHangup == "ORIGINATOR_CANCEL" {
@@ -216,21 +224,37 @@ func ConnectionEsl() (config *viper.Viper) {
 							CallModel.CalledNumber = callAgent
 							CallModel.CallHangupCause = callHangup
 
-							insRedisByte, err := json.Marshal(CallModel)
-							if err != nil {
-								fmt.Println("String Convert Byte Err..>", err)
-							}
-							res, err := db.ClientRedis.RPush("call_event_msg_list_"+callAgent, string(insRedisByte)).Result()
-							if err != nil {
-								fmt.Println("RPush Err..>", err)
-							} else {
-								db.ClientRedis.Expire("call_event_msg_list_"+callAgent, time.Hour*2)
-								fmt.Println("[呼叫放弃]insert Redis Success! res >", res)
-							}
+							InsertRedisMQ(callAgent, CallModel)
+
 						} else {
 							fmt.Println("连接失败原因..>", callHangup)
 						}
+					case "agent-status-change":
+						fmt.Println("坐席状态切换")
+						agentStatus := msg.Headers["CC-Agent-Status"]
+						callAgent := msg.Headers["CC-Agent"]
+						CallModel := CallModel{}
+						CallModel.Event_type = "1306"
+						CallModel.Event_mess = "坐席状态切换"
+						CallModel.Event_time = time.Now().Unix()
+						CallModel.AgentStatus = agentStatus
+						StatusMSG := helper.ConvertCN(agentStatus)
+						CallModel.AgentStatusMsg = StatusMSG
 
+						InsertRedisMQ(callAgent, CallModel)
+					case "agent-state-change":
+						fmt.Println("坐席在队列中的特定状态")
+						agentState := msg.Headers["CC-Agent-State"]
+						callAgent := msg.Headers["CC-Agent"]
+						CallModel := CallModel{}
+						CallModel.Event_type = "1307"
+						CallModel.Event_mess = "坐席队列状态切换"
+						CallModel.Event_time = time.Now().Unix()
+						CallModel.AgentState = agentState
+						StateMSG := helper.ConvertCN(agentState)
+						CallModel.AgentStateMsg = StateMSG
+
+						InsertRedisMQ(callAgent, CallModel)
 					}
 				case "verto::client_disconnect":
 					fmt.Println("freeswitch 服务断开...发起重新连接！")
@@ -251,17 +275,7 @@ func ConnectionEsl() (config *viper.Viper) {
 				CallModel.CallNumber = callNumber
 				CallModel.CalledNumber = callerNumber
 
-				insRedisByte, err := json.Marshal(CallModel)
-				if err != nil {
-					fmt.Println("String Convert Byte Err..>", err)
-				}
-				res, err := db.ClientRedis.RPush("call_event_msg_list_"+callAgent, string(insRedisByte)).Result()
-				if err != nil {
-					fmt.Println("RPush Err..>", err)
-				} else {
-					db.ClientRedis.Expire("call_event_msg_list_"+callAgent, time.Hour*2)
-					fmt.Println("[坐席电话接起]insert Redis Success! res >", res)
-				}
+				InsertRedisMQ(callAgent, CallModel)
 			case "CHANNEL_DESTROY":
 				ha := helper.HaHangupV{}
 				eventType := "1304"
@@ -293,17 +307,8 @@ func ConnectionEsl() (config *viper.Viper) {
 				CallModel.CalledNumber = callerNumber
 				CallModel.CallHangupCause = ha.HaHangupCauseCause
 
-				insRedisByte, err := json.Marshal(CallModel)
-				if err != nil {
-					fmt.Println("String Convert Byte Err..>", err)
-				}
-				res, err := db.ClientRedis.RPush("call_event_msg_list_"+callAgent, string(insRedisByte)).Result()
-				if err != nil {
-					fmt.Println("RPush Err..>", err)
-				} else {
-					db.ClientRedis.Expire("call_event_msg_list_"+callAgent, time.Hour*2)
-					fmt.Println("[坐席电话拒绝]insert Redis Success! res >", res)
-				}
+				InsertRedisMQ(callAgent, CallModel)
+
 			case "CHANNEL_CREATE":
 				if msg.Headers["variable_direction"] == "inbound" && msg.Headers["Caller-Context"] == "public" {
 					//本逻辑来禁止异常的呼叫ip，如果发现异常的呼叫就加入到黑名单中
@@ -326,6 +331,20 @@ func ConnectionEsl() (config *viper.Viper) {
 		}
 	}
 	return
+}
+
+func InsertRedisMQ(callAgent string, CallModel CallModel) {
+	insRedisByte, err := json.Marshal(CallModel)
+	if err != nil {
+		fmt.Println("String Convert Byte Err..>", err)
+	}
+	res, err := db.ClientRedis.RPush("call_event_msg_list_"+callAgent, string(insRedisByte)).Result()
+	if err != nil {
+		fmt.Println("RPush Err..>", err)
+	} else {
+		fmt.Println("[存入消息队列MQ]insert Redis Success! res >", res)
+		db.ClientRedis.Expire("call_event_msg_list_"+callAgent, time.Hour*2)
+	}
 }
 
 func ConnFs(config *viper.Viper) (client *Client, err error) {
