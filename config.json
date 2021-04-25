@@ -11,13 +11,13 @@
   },
   "AppConfig": {
     "port": ":8000",
-    "DataBase": "root:root@tcp(127.0.0.1:3307)/freeswitch?parseTime=true"
+    "DataBase": "root:2krUCTwtENQCJDaL@tcp(39.97.233.230:3300)/freeswitch?parseTime=true"
   },
   "redis": {
     "REDIS_NETWORK": "tcp",
-    "REDIS_HOST": "127.0.0.1",
-    "REDIS_PORT": "6379",
-    "REDIS_PASSWORD": "",
+    "REDIS_HOST": "39.97.233.230",
+    "REDIS_PORT": "6600",
+    "REDIS_PASSWORD": "&e@rq6%icIOc1ClN",
     "REDIS_DB": 1
   }
 }

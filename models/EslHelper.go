@@ -35,6 +35,7 @@ type SipModel struct {
 }
 
 type CallModel struct {
+	Calluuid        string `json:"calluuid"`
 	Event_type      string `json:"event_type"`
 	Event_mess      string `json:"event_mess"`
 	Event_time      int64  `json:"event_time"`
@@ -141,7 +142,7 @@ func ConnectionEsl() (config *viper.Viper) {
 						ipName, msg.Headers["from-user"], msg.Headers["contact"], msg.Headers["user_context"], msg.Headers["user-agent"])
 					callAgent := msg.Headers["from-user"]
 					CallModel := CallModel{}
-					CallModel.Event_type = "1401"
+					CallModel.Event_type = "1501"
 					CallModel.Event_mess = "注销sip账号"
 					CallModel.Event_time = time.Now().Unix()
 					CallModel.CalledNumber = callAgent
@@ -161,7 +162,7 @@ func ConnectionEsl() (config *viper.Viper) {
 					}
 					callAgent := msg.Headers["to-user"]
 					CallModel := CallModel{}
-					CallModel.Event_type = "1402"
+					CallModel.Event_type = "1502"
 					CallModel.Event_mess = "sip账号错误"
 					CallModel.Event_time = time.Now().Unix()
 					CallModel.CalledNumber = callAgent
@@ -197,8 +198,12 @@ func ConnectionEsl() (config *viper.Viper) {
 					case "agent-offering":
 						callAni := msg.Headers["CC-Member-CID-Number"]
 						callAgent := msg.Headers["CC-Agent"]
+						callUUid := msg.Headers["CC-Member-UUID"]
+						callSessionUUid := msg.Headers["CC-Member-Session-UUID"]
 						fmt.Printf("呼叫振铃给：%v ,来电号码：%v \n", callAgent, callAni)
+						fmt.Printf("uuid：%v ,sessionId：%v \n", callUUid, callSessionUUid)
 						CallModel := CallModel{}
+						CallModel.Calluuid = callSessionUUid
 						CallModel.Event_type = "1301"
 						CallModel.Event_mess = "坐席振铃"
 						CallModel.Event_time = time.Now().Unix()
@@ -234,7 +239,7 @@ func ConnectionEsl() (config *viper.Viper) {
 						agentStatus := msg.Headers["CC-Agent-Status"]
 						callAgent := msg.Headers["CC-Agent"]
 						CallModel := CallModel{}
-						CallModel.Event_type = "1306"
+						CallModel.Event_type = "1303"
 						CallModel.Event_mess = "坐席状态切换"
 						CallModel.Event_time = time.Now().Unix()
 						CallModel.AgentStatus = agentStatus
@@ -247,7 +252,7 @@ func ConnectionEsl() (config *viper.Viper) {
 						agentState := msg.Headers["CC-Agent-State"]
 						callAgent := msg.Headers["CC-Agent"]
 						CallModel := CallModel{}
-						CallModel.Event_type = "1307"
+						CallModel.Event_type = "1304"
 						CallModel.Event_mess = "坐席队列状态切换"
 						CallModel.Event_time = time.Now().Unix()
 						CallModel.AgentState = agentState
@@ -264,41 +269,58 @@ func ConnectionEsl() (config *viper.Viper) {
 					log.Infof("未知子事件..>%s", msg)
 				}
 			case "CHANNEL_ANSWER":
-				callAgent := msg.Headers["Caller-Callee-ID-Number"]
+				callUUid := msg.Headers["variable_call_uuid"]
+				//callAgent := msg.Headers["Caller-Callee-ID-Number"]
 				callNumber := msg.Headers["Caller-Caller-ID-Number"]                             // 主叫号码
 				callerNumber := msg.Headers["Caller-Callee-ID-Number"]                           // 被叫
 				callerAnswerTime, _ := strconv.Atoi(msg.Headers["Caller-Channel-Answered-Time"]) //应答时间
 				CallModel := CallModel{}
-				CallModel.Event_type = "1303"
-				CallModel.Event_mess = "电话接起"
+				CallModel.Calluuid = callUUid
+				CallModel.Event_type = "1401"
+				CallModel.Event_mess = "话机接起"
 				CallModel.Event_time = int64(callerAnswerTime)
 				CallModel.CallNumber = callNumber
 				CallModel.CalledNumber = callerNumber
-
-				InsertRedisMQ(callAgent, CallModel)
+				callAgent := SipSelectAgent(msg.Headers["Caller-Callee-ID-Number"])
+				if msg.Headers["Other-Leg-Logical-Direction"] == "inbound" {
+					callAgent = SipSelectAgent(msg.Headers["Caller-Caller-ID-Name"])
+					CallModel.Event_type = "1403"
+					CallModel.Event_mess = "被叫接听"
+				}
+				//if msg.Headers["Call-Direction"] == "outbound" && msg.Headers["Caller-ANI"] == "0000000000" && msg.Headers["Answer-State"] == "answered" {
+				//	callAgent = SipSelectAgent(callAgent)
+				//}
+				if callAgent != "" {
+					InsertRedisMQ(callAgent, CallModel)
+				}
 			case "CHANNEL_DESTROY":
 				ha := helper.HaHangupV{}
-				eventType := "1304"
+				eventType := "1402"
 				eventMsg := "电话销毁"
 				callType := msg.Headers["Caller-Logical-Direction"]
-				callAgent := msg.Headers["Caller-Callee-ID-Number"]
+				callAgent := SipSelectAgent(msg.Headers["Caller-Callee-ID-Number"])
 				callNumber := msg.Headers["Caller-Caller-ID-Number"]   // 主叫号码
 				callerNumber := msg.Headers["Caller-Callee-ID-Number"] // 被叫
 				callerHangupTime := time.Now().Unix()                  //拒绝时间
-				callHangupCause := msg.Headers["Hangup-Cause"]
-				ha = helper.ErrConvertCN(callHangupCause)
+				ha = helper.ErrConvertCN(msg.Headers["Hangup-Cause"])
 				if callType == "inbound" {
 					if msg.Headers["Caller-Destination-Number"] == "voicemail" {
 						fmt.Println("电话销毁，进入了留言!!")
-						eventType = "1305"
+						eventType = "1601"
 						eventMsg = "接入语音信箱"
-
+						callAgent = msg.Headers["Caller-Caller-ID-Number"]
+						callNumber = msg.Headers["Caller-Callee-ID-Number"]
+						callerNumber = msg.Headers["Caller-Caller-ID-Number"]
+					} else {
+						callAgent = SipSelectAgent(msg.Headers["Caller-Caller-ID-Number"])
 					}
-					callAgent = msg.Headers["Caller-Caller-ID-Number"]
-					callNumber = msg.Headers["Caller-Callee-ID-Number"]
-					callerNumber = msg.Headers["Caller-Caller-ID-Number"]
-				}
 
+				} else {
+					//通知坐席，话机挂断
+					eventType = "1402"
+					eventMsg = "电话销毁"
+
+				}
 				CallModel := CallModel{}
 				CallModel.Event_type = eventType
 				CallModel.Event_mess = eventMsg
@@ -307,7 +329,9 @@ func ConnectionEsl() (config *viper.Viper) {
 				CallModel.CalledNumber = callerNumber
 				CallModel.CallHangupCause = ha.HaHangupCauseCause
 
-				InsertRedisMQ(callAgent, CallModel)
+				if callAgent != "" {
+					InsertRedisMQ(callAgent, CallModel)
+				}
 
 			case "CHANNEL_CREATE":
 				if msg.Headers["variable_direction"] == "inbound" && msg.Headers["Caller-Context"] == "public" {
@@ -323,7 +347,24 @@ func ConnectionEsl() (config *viper.Viper) {
 					} else {
 						log.Infof("呼叫Call：%v. DesCall:%v. CallerIP : %v", CallerAni, CallNumber, CallNetWork)
 					}
-
+				}
+				if msg.Headers["variable_direction"] == "outbound" && msg.Headers["Caller-ANI"] == "0000000000" && msg.Headers["Answer-State"] == "ringing" {
+					//振铃话机
+					SipPhone := msg.Headers["Caller-Callee-ID-Number"]
+					//通过话机找到现在关联的坐席人员信息...
+					AgentId := SipSelectAgent(SipPhone)
+					CallModel := CallModel{}
+					CallModel.Calluuid = msg.Headers["Channel-Call-UUID"]
+					CallModel.Event_type = "1401"
+					CallModel.Event_mess = "话机振铃"
+					CallModel.Event_time = time.Now().Unix()
+					CallModel.CallNumber = msg.Headers["Caller-ANI"]
+					CallModel.CalledNumber = msg.Headers["Caller-Callee-ID-Number"]
+					if AgentId != "" {
+						InsertRedisMQ(AgentId, CallModel)
+					} else {
+						fmt.Println("话机振铃异常，原因找不到坐席相关的信息！")
+					}
 				}
 			default:
 				log.Infof("Got new message: %s", msg)
@@ -333,12 +374,22 @@ func ConnectionEsl() (config *viper.Viper) {
 	return
 }
 
+//通过sip账号查找坐席的工号..
+func SipSelectAgent(SipPhone string) (AgentId string) {
+	fmt.Printf("查询%v数据 \n", SipPhone)
+	row := db.SqlDB.QueryRow("select AgentId from agent_binding where sipUser = ?", SipPhone)
+	row.Scan(&AgentId)
+	return
+}
+
 func InsertRedisMQ(callAgent string, CallModel CallModel) {
 	insRedisByte, err := json.Marshal(CallModel)
 	if err != nil {
 		fmt.Println("String Convert Byte Err..>", err)
 	}
-	res, err := db.ClientRedis.RPush("call_event_msg_list_"+callAgent, string(insRedisByte)).Result()
+	MQStr := string(insRedisByte)
+	fmt.Println(callAgent, " -> 添加消息队列：", MQStr)
+	res, err := db.ClientRedis.RPush("call_event_msg_list_"+callAgent, MQStr).Result()
 	if err != nil {
 		fmt.Println("RPush Err..>", err)
 	} else {
