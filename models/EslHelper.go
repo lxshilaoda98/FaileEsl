@@ -263,6 +263,20 @@ func ConnectionEsl() (config *viper.Viper) {
 					}
 				case "verto::client_disconnect":
 					fmt.Println("freeswitch 服务断开...发起重新连接！")
+					res,err :=db.SqlDB.Query("select AgentId from agnet_binding")
+					if err!=nil {
+						fmt.Println("查询绑定失败！err ",err)
+					}else{
+						var AgentIdList []string
+						for res.Next(){
+							var AgentId string
+							res.Scan(&AgentId)
+							AgentIdList = append(AgentIdList, AgentId)
+						}
+						res.Close()
+						logout(AgentIdList)
+					}
+
 					time.Sleep(time.Second * 5)
 					ConnectionEsl()
 				default:
@@ -390,6 +404,21 @@ func ConnectionEsl() (config *viper.Viper) {
 	}
 	return
 }
+func logout(AgentId []string){
+	//首先清理redis的登录成功缓存
+	//清理db关联数据
+	for k,_:= range AgentId{
+		res,err:=db.ClientRedis.Del(fmt.Sprintf("call_login_succ_%v",k)).Result()
+		if err != nil {
+			fmt.Printf("【登录redis】删除redis缓存数据Err..>%v \n",err)
+		}else{
+			fmt.Println(" 【登录redis】删除redis缓存数据成功!",res)
+			db.SqlDB.QueryRow("delete from agent_binding where AgentId = ?",k)
+		}
+	}
+
+}
+
 
 //通过sip账号查找坐席的工号..
 func SipSelectAgent(SipPhone string) (AgentId string) {
@@ -399,6 +428,7 @@ func SipSelectAgent(SipPhone string) (AgentId string) {
 	return
 }
 
+//插入消息到redis消息队列
 func InsertRedisMQ(callAgent string, CallModel CallModel) {
 	insRedisByte, err := json.Marshal(CallModel)
 	if err != nil {

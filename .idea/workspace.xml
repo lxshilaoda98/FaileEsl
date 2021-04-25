@@ -3,6 +3,8 @@
   <component name="ChangeListManager">
     <list default="true" id="c7b8e8c8-ed24-460f-b52d-a3f88c8fd375" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/FaileEsl" beforeDir="false" afterPath="$PROJECT_DIR$/FaileEsl" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/log.txt" beforeDir="false" afterPath="$PROJECT_DIR$/log.txt" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/models/EslHelper.go" beforeDir="false" afterPath="$PROJECT_DIR$/models/EslHelper.go" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
