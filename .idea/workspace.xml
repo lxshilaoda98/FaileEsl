@@ -2,11 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="c7b8e8c8-ed24-460f-b52d-a3f88c8fd375" name="Default Changelist" comment="">
-      <change afterPath="$PROJECT_DIR$/models/dbModel.go" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/models/systemModel.go" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/config.json" beforeDir="false" afterPath="$PROJECT_DIR$/config.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/models/EslHelper.go" beforeDir="false" afterPath="$PROJECT_DIR$/models/EslHelper.go" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/log.txt" beforeDir="false" afterPath="$PROJECT_DIR$/log.txt" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
@@ -124,7 +120,8 @@
     <MESSAGE value="新增白名单逻辑" />
     <MESSAGE value="新增轮训逻辑" />
     <MESSAGE value="1" />
-    <option name="LAST_COMMIT_MESSAGE" value="1" />
+    <MESSAGE value="1、设置开启防火墙&#10;2、分开多个model文件" />
+    <option name="LAST_COMMIT_MESSAGE" value="1、设置开启防火墙&#10;2、分开多个model文件" />
   </component>
   <component name="VgoProject">
     <integration-enabled>true</integration-enabled>
