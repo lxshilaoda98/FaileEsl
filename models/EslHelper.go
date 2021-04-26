@@ -1,14 +1,8 @@
 package models
 
-
-
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -17,17 +11,17 @@ import (
 	"github.com/fsnotify/fsnotify"
 	log "github.com/go-fastlog/fastlog"
 	db "github.com/n1n1n1_owner/FaileEsl/bin/database"
-	helper "github.com/n1n1n1_owner/FaileEsl/bin/helper"
+	"github.com/n1n1n1_owner/FaileEsl/bin/helper"
 	"github.com/spf13/viper"
-	"golang.org/x/text/encoding/simplifiedchinese"
 )
 
 type EslConfig struct {
-	fshost   string
-	fsport   uint
-	password string
-	timeout  int
-	allowIP  []string
+	fshost       string
+	fsport       uint
+	password     string
+	timeout      int
+	allowIP      []string
+	openFireWall bool
 }
 
 type SipModel struct {
@@ -135,7 +129,7 @@ func ConnectionEsl() (config *viper.Viper) {
 					//GetUserID(msg.Headers["from-user"])
 					//AddFw(msg,countryCapitalMap,ipName)
 					if msg.Headers["user-agent"] == "unknown" || msg.Headers["user-agent"] == "" {
-						AddFw(msg, countryCapitalMap, ipName)
+						AddFw(config, msg, countryCapitalMap, ipName)
 					}
 				case "sofia::register_attempt":
 					fmt.Printf("【注册尝试】来自ip.>%v .注册sip账号：%v \n 联系地址：%v 域：%v \n 客户端：%v \n",
@@ -161,7 +155,7 @@ func ConnectionEsl() (config *viper.Viper) {
 					//d = GetUserID(msg.Headers["from-user"])
 					if msg.Headers["network-ip"] != "" {
 						ipName = msg.Headers["network-ip"]
-						AddFw(msg, countryCapitalMap, ipName)
+						AddFw(config, msg, countryCapitalMap, ipName)
 					}
 					callAgent := msg.Headers["to-user"]
 					CallModel := CallModel{}
@@ -173,7 +167,7 @@ func ConnectionEsl() (config *viper.Viper) {
 				case "sofia::wrong_call_state":
 					ipName = msg.Headers["network_ip"]
 					fmt.Println("错误的异常呼叫..>", ipName)
-					AddFw(msg, countryCapitalMap, ipName)
+					AddFw(config, msg, countryCapitalMap, ipName)
 				case "callcenter::info":
 					fmt.Println("处理callcenter的请求..>", msg)
 					ccAction := msg.Headers["CC-Action"]
@@ -360,7 +354,7 @@ func ConnectionEsl() (config *viper.Viper) {
 					log.Infof("呼叫者%v , 被叫号码：%v", CallerAni, CallNumber)
 					if len(CallNumber) > 12 {
 						log.Infof("本次呼叫的号码可能异常..>暂时将ip：%v 加入到黑名单！", CallNetWork)
-						AddFw(msg, countryCapitalMap, CallNetWork)
+						AddFw(config, msg, countryCapitalMap, CallNetWork)
 					} else {
 						log.Infof("呼叫Call：%v. DesCall:%v. CallerIP : %v", CallerAni, CallNumber, CallNetWork)
 					}
@@ -407,45 +401,6 @@ func ConnectionEsl() (config *viper.Viper) {
 	}
 	return
 }
-func logout(AgentId []string) {
-	//首先清理redis的登录成功缓存
-	//清理db关联数据
-	for k := range AgentId {
-		res, err := db.ClientRedis.Del(fmt.Sprintf("call_login_succ_%v", k)).Result()
-		if err != nil {
-			fmt.Printf("【登录redis】删除redis缓存数据Err..>%v \n", err)
-		} else {
-			fmt.Println(" 【登录redis】删除redis缓存数据成功!", res)
-			db.SqlDB.QueryRow("delete from agent_binding where AgentId = ?", k)
-		}
-	}
-
-}
-
-//通过sip账号查找坐席的工号..
-func SipSelectAgent(SipPhone string) (AgentId string) {
-	fmt.Printf("查询%v数据 \n", SipPhone)
-	row := db.SqlDB.QueryRow("select AgentId from agent_binding where sipUser = ?", SipPhone)
-	row.Scan(&AgentId)
-	return
-}
-
-//插入消息到redis消息队列
-func InsertRedisMQ(callAgent string, CallModel CallModel) {
-	insRedisByte, err := json.Marshal(CallModel)
-	if err != nil {
-		fmt.Println("String Convert Byte Err..>", err)
-	}
-	MQStr := string(insRedisByte)
-	fmt.Println(callAgent, " -> 添加消息队列：", MQStr)
-	res, err := db.ClientRedis.RPush("call_event_msg_list_"+callAgent, MQStr).Result()
-	if err != nil {
-		fmt.Println("RPush Err..>", err)
-	} else {
-		fmt.Println("[存入消息队列MQ]insert Redis Success! res >", res)
-		db.ClientRedis.Expire("call_event_msg_list_"+callAgent, time.Hour*2)
-	}
-}
 
 func ConnFs(config *viper.Viper) (client *Client, err error) {
 	fmt.Printf("connection User:%s, Port:%d , PWd:%s , Tiemout:%d \n , ip:%v \n",
@@ -472,8 +427,9 @@ func ConnFs(config *viper.Viper) (client *Client, err error) {
 	return
 }
 
-func AddFw(msg *Message, countryCapitalMap map[string]SipModel, ipName string) {
+func AddFw(config *viper.Viper, msg *Message, countryCapitalMap map[string]SipModel, ipName string) {
 	fmt.Println("发现本次请求为异常数据====>添加/修改map集合！")
+	IsOpen := config.GetBool("EslConfig.openFireWall")
 	sip := SipModel{
 		ip:        "",
 		userAgent: "",
@@ -492,8 +448,14 @@ func AddFw(msg *Message, countryCapitalMap map[string]SipModel, ipName string) {
 		fmt.Println(ipName, "的异常请求总数量：", countryCapitalMap[ipName].count)
 		if countryCapitalMap[ipName].count >= 5 {
 			fmt.Println("限制ip：", countryCapitalMap[ipName].ip, "..>")
-			delete(countryCapitalMap, ipName)
-			addfw(capital.ip)
+			if IsOpen == true {
+				fmt.Println("开启了防火墙SBC,将添加ip到防火墙中！", countryCapitalMap[ipName].ip)
+				delete(countryCapitalMap, ipName)
+				addfw(capital.ip)
+			} else {
+				fmt.Println("没有开启sbc模式..>直接过滤ip.>", countryCapitalMap[ipName].ip)
+				delete(countryCapitalMap, ipName)
+			}
 			fmt.Println("删除..>", ipName, "..现在集合长度为：", len(countryCapitalMap))
 		}
 	} else {
@@ -504,61 +466,4 @@ func AddFw(msg *Message, countryCapitalMap map[string]SipModel, ipName string) {
 		countryCapitalMap[ipName] = sip
 		fmt.Println("添加到map集合=====>end")
 	}
-}
-
-//func GetUserID(user string) (Number int) {
-//	sql := "select count(*) as Number from sipuser where SIPUser =?"
-//	rows := db.SqlDB.QueryRow(sql, user)
-//	rows.Scan(&Number)
-//	return
-//}
-func addfw(ip string) {
-	sysType := runtime.GOOS
-	fmt.Println("当前系统：", sysType)
-	if sysType == "linux" {
-		// LINUX系统
-		e, f, f1 := exec_shell(fmt.Sprintf("fail2ban-client set freeswitch banip %v", ip))
-		if e != nil {
-			fmt.Println("执行命令错误..>", e)
-		} else {
-			fmt.Println("成功执行命令.>", f, "...>", f1)
-		}
-	}
-	if sysType == "windows" {
-		// windows系统
-		f, e := exec_cmd(fmt.Sprintf("netsh advfirewall firewall add rule name =\"des_%v\" remoteip=\"%v\" dir=in action=block", ip, ip))
-		if e != nil {
-			fmt.Println("执行命令错误..>", e)
-		} else {
-			fmt.Println("成功执行命令.>", f)
-		}
-	}
-
-}
-
-func exec_shell(command string) (error, string, string) {
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd := exec.Command("bash", "-c", command)
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	return err, stdout.String(), stderr.String()
-}
-
-func exec_cmd(command string) (str string, err error) {
-	var whoami []byte
-
-	//函数返回一个*Cmd，用于使用给出的参数执行name指定的程序
-	//cmd := exec.Command("/bin/bash", "", s)
-	fmt.Println("运行的cmd..>", command)
-	cmd := exec.Command("cmd", "/C", command)
-	if whoami, err = cmd.Output(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-	// 指定参数后过滤换行符
-	ret, err := simplifiedchinese.GBK.NewDecoder().String(string(whoami))
-	fmt.Println(ret)
-	return ret, err
 }

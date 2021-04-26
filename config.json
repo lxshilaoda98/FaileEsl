@@ -4,7 +4,8 @@
     "fsport": "8021",
     "password": "1qaz@WSX..",
     "timeout": 10,
-    "allowIP": ["39.97.233.183","192.168.101.157"]
+    "allowIP": ["39.97.233.183","192.168.101.157"],
+    "openFireWall": false
   },
   "IVRConfig": {
     "dir": "C:\\Program Files\\FreeSWITCH"
