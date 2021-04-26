@@ -304,7 +304,9 @@ func ConnectionEsl() (config *viper.Viper) {
 				if callAgent != "" {
 					InsertRedisMQ(callAgent, CallModel)
 				}
-			case "CHANNEL_DESTROY":
+			case "CHANNEL_DESTROY": 
+				//fmt.Println("销毁电话..>",msg.Headers["Caller-Callee-ID-Number"])
+				//fmt.Println("销毁电话..>",msg)
 				ha := helper.HaHangupV{}
 				eventType := "1405"
 				eventMsg := "电话销毁"
@@ -323,13 +325,26 @@ func ConnectionEsl() (config *viper.Viper) {
 						callNumber = msg.Headers["Caller-Callee-ID-Number"]
 						callerNumber = msg.Headers["Caller-Caller-ID-Number"]
 					} else {
-						callAgent = SipSelectAgent(msg.Headers["Caller-Caller-ID-Number"])
+						//callAgent = SipSelectAgent(msg.Headers["Caller-Caller-ID-Number"])
+						if msg.Headers["variable_sofia_profile_name"] == "internal" {
+							eventType = "1405"
+							eventMsg = "电话销毁" //只需要判断一个挂断即可
+							callAgent = SipSelectAgent(msg.Headers["Caller-Caller-ID-Number"])
+						}
 					}
 
 				} else {
 					//通知坐席，话机挂断
-					eventType = "1405"
-					eventMsg = "电话销毁"
+					//eventMsg = "电话销毁"
+					if msg.Headers["variable_sofia_profile_name"] == "internal" {
+						eventType = "1405"
+						eventMsg = "电话销毁" //只需要判断一个挂断即可
+						callAgent = SipSelectAgent(msg.Headers["Caller-Caller-ID-Number"])
+					}
+					//else if msg.Headers["variable_sofia_profile_name"] == "external" {
+					//	eventMsg = "电话销毁"  //线路挂断
+					//}
+
 
 				}
 				CallModel := CallModel{}
