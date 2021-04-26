@@ -1,9 +1,18 @@
 package models
 
+
+
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
+	"runtime"
+	"strconv"
+	"strings"
+	"time"
+
 	. "github.com/0x19/goesl"
 	"github.com/fsnotify/fsnotify"
 	log "github.com/go-fastlog/fastlog"
@@ -11,12 +20,6 @@ import (
 	helper "github.com/n1n1n1_owner/FaileEsl/bin/helper"
 	"github.com/spf13/viper"
 	"golang.org/x/text/encoding/simplifiedchinese"
-	"os"
-	"os/exec"
-	"runtime"
-	"strconv"
-	"strings"
-	"time"
 )
 
 type EslConfig struct {
@@ -263,12 +266,12 @@ func ConnectionEsl() (config *viper.Viper) {
 					}
 				case "verto::client_disconnect":
 					fmt.Println("freeswitch 服务断开...发起重新连接！")
-					res,err :=db.SqlDB.Query("select AgentId from agnet_binding")
-					if err!=nil {
-						fmt.Println("查询绑定失败！err ",err)
-					}else{
+					res, err := db.SqlDB.Query("select AgentId from agnet_binding")
+					if err != nil {
+						fmt.Println("查询绑定失败！err ", err)
+					} else {
 						var AgentIdList []string
-						for res.Next(){
+						for res.Next() {
 							var AgentId string
 							res.Scan(&AgentId)
 							AgentIdList = append(AgentIdList, AgentId)
@@ -285,14 +288,14 @@ func ConnectionEsl() (config *viper.Viper) {
 			case "CHANNEL_ANSWER":
 				callUUid := msg.Headers["variable_call_uuid"]
 				//callAgent := msg.Headers["Caller-Callee-ID-Number"]
-				callNumber := msg.Headers["Caller-Caller-ID-Number"]                             // 主叫号码
-				callerNumber := msg.Headers["Caller-Callee-ID-Number"]                           // 被叫
+				callNumber := msg.Headers["Caller-Caller-ID-Number"]   // 主叫号码
+				callerNumber := msg.Headers["Caller-Callee-ID-Number"] // 被叫
 				//callerAnswerTime, _ := strconv.Atoi(msg.Headers["Caller-Channel-Answered-Time"]) //应答时间
 				CallModel := CallModel{}
 				CallModel.Calluuid = callUUid
 				CallModel.Event_type = "1402"
 				CallModel.Event_mess = "话机接起"
-				CallModel.Event_time = time.Now().Unix()//int64(callerAnswerTime)
+				CallModel.Event_time = time.Now().Unix() //int64(callerAnswerTime)
 				CallModel.CallNumber = callNumber
 				CallModel.CalledNumber = callerNumber
 				callAgent := SipSelectAgent(msg.Headers["Caller-Callee-ID-Number"])
@@ -362,7 +365,7 @@ func ConnectionEsl() (config *viper.Viper) {
 						log.Infof("呼叫Call：%v. DesCall:%v. CallerIP : %v", CallerAni, CallNumber, CallNetWork)
 					}
 				}
-				if msg.Headers["variable_sofia_profile_name"] =="internal" && msg.Headers["variable_direction"] == "outbound" && msg.Headers["Caller-ANI"] == "0000000000" && msg.Headers["Answer-State"] == "ringing" {
+				if msg.Headers["variable_sofia_profile_name"] == "internal" && msg.Headers["variable_direction"] == "outbound" && msg.Headers["Caller-ANI"] == "0000000000" && msg.Headers["Answer-State"] == "ringing" {
 					//振铃话机
 					SipPhone := msg.Headers["Caller-Callee-ID-Number"]
 					//通过话机找到现在关联的坐席人员信息...
@@ -379,7 +382,7 @@ func ConnectionEsl() (config *viper.Viper) {
 					} else {
 						fmt.Println("话机振铃异常，原因找不到坐席相关的信息！")
 					}
-				}else if msg.Headers["variable_sofia_profile_name"] =="external"{
+				} else if msg.Headers["variable_sofia_profile_name"] == "external" {
 					//振铃话机
 					SipPhone := msg.Headers["Caller-Caller-ID-Number"]
 					//通过话机找到现在关联的坐席人员信息...
@@ -404,21 +407,20 @@ func ConnectionEsl() (config *viper.Viper) {
 	}
 	return
 }
-func logout(AgentId []string){
+func logout(AgentId []string) {
 	//首先清理redis的登录成功缓存
 	//清理db关联数据
-	for k,_:= range AgentId{
-		res,err:=db.ClientRedis.Del(fmt.Sprintf("call_login_succ_%v",k)).Result()
+	for k := range AgentId {
+		res, err := db.ClientRedis.Del(fmt.Sprintf("call_login_succ_%v", k)).Result()
 		if err != nil {
-			fmt.Printf("【登录redis】删除redis缓存数据Err..>%v \n",err)
-		}else{
-			fmt.Println(" 【登录redis】删除redis缓存数据成功!",res)
-			db.SqlDB.QueryRow("delete from agent_binding where AgentId = ?",k)
+			fmt.Printf("【登录redis】删除redis缓存数据Err..>%v \n", err)
+		} else {
+			fmt.Println(" 【登录redis】删除redis缓存数据成功!", res)
+			db.SqlDB.QueryRow("delete from agent_binding where AgentId = ?", k)
 		}
 	}
 
 }
-
 
 //通过sip账号查找坐席的工号..
 func SipSelectAgent(SipPhone string) (AgentId string) {
