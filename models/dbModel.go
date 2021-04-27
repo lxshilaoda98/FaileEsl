@@ -28,13 +28,13 @@ func InsertRedisMQ(callAgent string, CallModel CallModel) {
 func logout(AgentId []string) {
 	//首先清理redis的登录成功缓存
 	//清理db关联数据
-	for k := range AgentId {
-		res, err := db.ClientRedis.Del(fmt.Sprintf("call_login_succ_%v", k)).Result()
+	for _,v := range AgentId {
+		res, err := db.ClientRedis.Del(fmt.Sprintf("call_login_succ_%v", v)).Result()
 		if err != nil {
 			fmt.Printf("【登录redis】删除redis缓存数据Err..>%v \n", err)
 		} else {
 			fmt.Println(" 【登录redis】删除redis缓存数据成功!", res)
-			db.SqlDB.QueryRow("delete from agent_binding where AgentId = ?", k)
+			db.SqlDB.QueryRow("delete from agent_binding where AgentId = ?", v)
 		}
 	}
 
