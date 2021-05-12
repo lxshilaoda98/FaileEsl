@@ -141,7 +141,7 @@ func ConnectionEsl() (config *viper.Viper) {
 					CallModel := CallModel{}
 					CallModel.Event_type = "1501"
 					CallModel.Event_mess = "注销sip账号"
-					CallModel.Event_time = time.Now().Unix()
+					CallModel.Event_time = time.Now().UnixNano() / 1e6
 					CallModel.CalledNumber = callAgent
 					InsertRedisMQ(callAgent, CallModel)
 
@@ -161,7 +161,7 @@ func ConnectionEsl() (config *viper.Viper) {
 					CallModel := CallModel{}
 					CallModel.Event_type = "1502"
 					CallModel.Event_mess = "sip账号错误"
-					CallModel.Event_time = time.Now().Unix()
+					CallModel.Event_time = time.Now().UnixNano() / 1e6
 					CallModel.CalledNumber = callAgent
 					InsertRedisMQ(callAgent, CallModel)
 				case "sofia::wrong_call_state":
@@ -203,7 +203,7 @@ func ConnectionEsl() (config *viper.Viper) {
 						CallModel.Calluuid = callSessionUUid
 						CallModel.Event_type = "1301"
 						CallModel.Event_mess = "坐席振铃"
-						CallModel.Event_time = time.Now().Unix()
+						CallModel.Event_time = time.Now().UnixNano() / 1e6
 						CallModel.CallNumber = callAni
 						CallModel.CalledNumber = callAgent
 						InsertRedisMQ(callAgent, CallModel)
@@ -238,7 +238,7 @@ func ConnectionEsl() (config *viper.Viper) {
 						CallModel := CallModel{}
 						CallModel.Event_type = "1303"
 						CallModel.Event_mess = "坐席状态切换"
-						CallModel.Event_time = time.Now().Unix()
+						CallModel.Event_time = time.Now().UnixNano() / 1e6
 						CallModel.AgentStatus = agentStatus
 						StatusMSG := helper.ConvertCN(agentStatus)
 						CallModel.AgentStatusMsg = StatusMSG
@@ -251,7 +251,7 @@ func ConnectionEsl() (config *viper.Viper) {
 						CallModel := CallModel{}
 						CallModel.Event_type = "1304"
 						CallModel.Event_mess = "坐席队列状态切换"
-						CallModel.Event_time = time.Now().Unix()
+						CallModel.Event_time = time.Now().UnixNano() / 1e6
 						CallModel.AgentState = agentState
 						StateMSG := helper.ConvertCN(agentState)
 						CallModel.AgentStateMsg = StateMSG
@@ -289,7 +289,7 @@ func ConnectionEsl() (config *viper.Viper) {
 				CallModel.Calluuid = callUUid
 				CallModel.Event_type = "1402"
 				CallModel.Event_mess = "话机接起"
-				CallModel.Event_time = time.Now().Unix() //int64(callerAnswerTime)
+				CallModel.Event_time = time.Now().UnixNano() / 1e6 //int64(callerAnswerTime)
 				CallModel.CallNumber = callNumber
 				CallModel.CalledNumber = callerNumber
 				callAgent := SipSelectAgent(msg.Headers["Caller-Callee-ID-Number"])
@@ -314,7 +314,7 @@ func ConnectionEsl() (config *viper.Viper) {
 				callAgent := SipSelectAgent(msg.Headers["Caller-Callee-ID-Number"])
 				callNumber := msg.Headers["Caller-Caller-ID-Number"]   // 主叫号码
 				callerNumber := msg.Headers["Caller-Callee-ID-Number"] // 被叫
-				callerHangupTime := time.Now().Unix()                  //拒绝时间
+				callerHangupTime := time.Now().UnixNano() / 1e6                 //拒绝时间
 				ha = helper.ErrConvertCN(msg.Headers["Hangup-Cause"])
 				if callType == "inbound" {
 					if msg.Headers["Caller-Destination-Number"] == "voicemail" {
@@ -383,7 +383,7 @@ func ConnectionEsl() (config *viper.Viper) {
 					CallModel.Calluuid = msg.Headers["Channel-Call-UUID"]
 					CallModel.Event_type = "1401"
 					CallModel.Event_mess = "话机振铃"
-					CallModel.Event_time = time.Now().Unix()
+					CallModel.Event_time = time.Now().UnixNano() / 1e6
 					CallModel.CallNumber = msg.Headers["Caller-ANI"]
 					CallModel.CalledNumber = msg.Headers["Caller-Callee-ID-Number"]
 					if AgentId != "" {
@@ -400,7 +400,7 @@ func ConnectionEsl() (config *viper.Viper) {
 					CallModel.Calluuid = msg.Headers["Channel-Call-UUID"]
 					CallModel.Event_type = "1403"
 					CallModel.Event_mess = "被叫振铃"
-					CallModel.Event_time = time.Now().Unix()
+					CallModel.Event_time = time.Now().UnixNano() / 1e6
 					CallModel.CallNumber = msg.Headers["Caller-Caller-ID-Number"]
 					CallModel.CalledNumber = msg.Headers["Caller-Callee-ID-Number"]
 					if AgentId != "" {
