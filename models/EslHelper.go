@@ -293,18 +293,31 @@ func ConnectionEsl() (config *viper.Viper) {
 				CallModel.CallNumber = callNumber
 				CallModel.CalledNumber = callerNumber
 				callAgent := SipSelectAgent(msg.Headers["Caller-Callee-ID-Number"])
+
 				if msg.Headers["Other-Leg-Logical-Direction"] == "inbound" {
 					callAgent = SipSelectAgent(msg.Headers["Caller-Caller-ID-Name"])
 					CallModel.Event_type = "1404"
 					CallModel.Event_mess = "被叫接听"
+
 				}
 				//if msg.Headers["Call-Direction"] == "outbound" && msg.Headers["Caller-ANI"] == "0000000000" && msg.Headers["Answer-State"] == "answered" {
 				//	callAgent = SipSelectAgent(callAgent)
 				//}
 				if callAgent != "" {
+					if CallModel.Event_type == "1402" {
+						_, err := db.SqlDB.Query("update call_makecall set TPAnswerTime=Now() where ChannelUUid=?", callUUid)
+						if err != nil {
+							fmt.Println("修改话机接起时间..Err..>", err)
+						}
+					} else if CallModel.Event_type == "1404" {
+						_, err := db.SqlDB.Query("update call_makecall set CalleeAnswerTime=Now(),CallStatus='通话中' where ChannelUUid=?", callUUid)
+						if err != nil {
+							fmt.Println("修改被叫接听时间..Err..>", err)
+						}
+					}
 					InsertRedisMQ(callAgent, CallModel)
 				}
-			case "CHANNEL_DESTROY": 
+			case "CHANNEL_DESTROY":
 				//fmt.Println("销毁电话..>",msg.Headers["Caller-Callee-ID-Number"])
 				//fmt.Println("销毁电话..>",msg)
 				ha := helper.HaHangupV{}
@@ -314,7 +327,7 @@ func ConnectionEsl() (config *viper.Viper) {
 				callAgent := SipSelectAgent(msg.Headers["Caller-Callee-ID-Number"])
 				callNumber := msg.Headers["Caller-Caller-ID-Number"]   // 主叫号码
 				callerNumber := msg.Headers["Caller-Callee-ID-Number"] // 被叫
-				callerHangupTime := time.Now().UnixNano() / 1e6                 //拒绝时间
+				callerHangupTime := time.Now().UnixNano() / 1e6        //拒绝时间
 				ha = helper.ErrConvertCN(msg.Headers["Hangup-Cause"])
 				if callType == "inbound" {
 					if msg.Headers["Caller-Destination-Number"] == "voicemail" {
@@ -339,15 +352,20 @@ func ConnectionEsl() (config *viper.Viper) {
 					if msg.Headers["variable_sofia_profile_name"] == "internal" {
 						eventType = "1405"
 						eventMsg = "电话销毁" //只需要判断一个挂断即可
-						callAgent = SipSelectAgent(msg.Headers["Caller-Caller-ID-Number"])
+						if msg.Headers["Caller-Callee-ID-Name"] == "Outbound Call" {
+							//话机未摘机
+							callAgent = SipSelectAgent(msg.Headers["Caller-Callee-ID-Number"])
+						} else {
+							callAgent = SipSelectAgent(msg.Headers["Caller-Caller-ID-Number"])
+						}
 					}
 					//else if msg.Headers["variable_sofia_profile_name"] == "external" {
 					//	eventMsg = "电话销毁"  //线路挂断
 					//}
 
-
 				}
 				CallModel := CallModel{}
+				CallModel.Calluuid = msg.Headers["Channel-Call-UUID"]
 				CallModel.Event_type = eventType
 				CallModel.Event_mess = eventMsg
 				CallModel.Event_time = callerHangupTime
@@ -356,11 +374,16 @@ func ConnectionEsl() (config *viper.Viper) {
 				CallModel.CallHangupCause = ha.HaHangupCauseCause
 
 				if callAgent != "" {
+					_, err := db.SqlDB.Query("update call_makecall set CallHangupTime=Now(),CallStatus='已销毁' where ChannelUUid=?", CallModel.Calluuid)
+					if err != nil {
+						fmt.Println("修改通话销毁时间..Err..>", err)
+					}
 					InsertRedisMQ(callAgent, CallModel)
 				}
 
 			case "CHANNEL_CREATE":
 				if msg.Headers["variable_direction"] == "inbound" && msg.Headers["Caller-Context"] == "public" {
+					//呼入过来的数据判断
 					//本逻辑来禁止异常的呼叫ip，如果发现异常的呼叫就加入到黑名单中
 					log.Infof(" A leg Call FreeSwitch Inbound")
 					CallerAni := msg.Headers["Caller-ANI"]
@@ -386,13 +409,20 @@ func ConnectionEsl() (config *viper.Viper) {
 					CallModel.Event_time = time.Now().UnixNano() / 1e6
 					CallModel.CallNumber = msg.Headers["Caller-ANI"]
 					CallModel.CalledNumber = msg.Headers["Caller-Callee-ID-Number"]
+
+					//写入数据库，外呼数据 ,如果直接用话机外呼，不记录数据
+					_, err := db.SqlDB.Query("INSERT into call_makecall (CallerNumber,CCAgent,ChannelUUid,TPRingTime,CallStatus) values(?,?,?,NOW(),'话机振铃')", CallModel.CalledNumber,
+						AgentId, CallModel.Calluuid)
+					if err != nil {
+						fmt.Println("插入外呼表Err..>", err)
+					}
 					if AgentId != "" {
 						InsertRedisMQ(AgentId, CallModel)
 					} else {
 						fmt.Println("话机振铃异常，原因找不到坐席相关的信息！")
 					}
-				} else if msg.Headers["variable_sofia_profile_name"] == "external" {
-					//振铃话机
+				} else if msg.Headers["variable_sofia_profile_name"] == "external" && msg.Headers["variable_direction"] == "outbound" {
+
 					SipPhone := msg.Headers["Caller-Caller-ID-Number"]
 					//通过话机找到现在关联的坐席人员信息...
 					AgentId := SipSelectAgent(SipPhone)
@@ -404,6 +434,10 @@ func ConnectionEsl() (config *viper.Viper) {
 					CallModel.CallNumber = msg.Headers["Caller-Caller-ID-Number"]
 					CallModel.CalledNumber = msg.Headers["Caller-Callee-ID-Number"]
 					if AgentId != "" {
+						_, err := db.SqlDB.Query("update call_makecall set CalleeRingTime=Now(),CallStatus='呼叫中',CalleeNumber=? where ChannelUUid=?", CallModel.CalledNumber, CallModel.Calluuid)
+						if err != nil {
+							fmt.Println("修改话机接起时间..Err..>", err)
+						}
 						InsertRedisMQ(AgentId, CallModel)
 					} else {
 						fmt.Println("被叫振铃异常，原因找不到坐席相关的信息！")
