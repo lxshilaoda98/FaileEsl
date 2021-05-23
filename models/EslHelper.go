@@ -305,12 +305,12 @@ func ConnectionEsl() (config *viper.Viper) {
 				//}
 				if callAgent != "" {
 					if CallModel.Event_type == "1402" {
-						_, err := db.SqlDB.Query("update call_makecall set TPAnswerTime=Now() where ChannelUUid=?", callUUid)
+						_, err := db.SqlDB.Query("update call_userstatus set TPAnswerTime=Now() where ChannelUUid=?", callUUid)
 						if err != nil {
 							fmt.Println("修改话机接起时间..Err..>", err)
 						}
 					} else if CallModel.Event_type == "1404" {
-						_, err := db.SqlDB.Query("update call_makecall set CalleeAnswerTime=Now(),CallStatus='通话中' where ChannelUUid=?", callUUid)
+						_, err := db.SqlDB.Query("update call_userstatus set CalleeAnswerTime=Now(),CallStatus='通话中' where ChannelUUid=?", callUUid)
 						if err != nil {
 							fmt.Println("修改被叫接听时间..Err..>", err)
 						}
@@ -374,13 +374,22 @@ func ConnectionEsl() (config *viper.Viper) {
 				CallModel.CallHangupCause = ha.HaHangupCauseCause
 
 				if callAgent != "" {
-					_, err := db.SqlDB.Query("update call_makecall set CallHangupTime=Now(),CallStatus='已销毁' where ChannelUUid=?", CallModel.Calluuid)
+					_, err := db.SqlDB.Query("update call_userstatus set CallHangupTime=Now(),CallStatus='已销毁' where ChannelUUid=?", CallModel.Calluuid)
 					if err != nil {
 						fmt.Println("修改通话销毁时间..Err..>", err)
+					} else {
+						_, err := db.SqlDB.Query("INSERT INTO call_makecall (CallerNumber,CalleeNumber,CCAgent,ChannelUUid,TPRingTime,TPAnswerTime,CalleeRingTime,CalleeAnswerTime,CallStatus,CallHangupTime)SELECT CallerNumber,CalleeNumber,CCAgent,ChannelUUid,TPRingTime,TPAnswerTime,CalleeRingTime,CalleeAnswerTime,CallStatus,CallHangupTime from call_userstatus where ChannelUUid =?", CallModel.Calluuid)
+						if err != nil {
+							fmt.Println("后处理数据异常Err..>", err)
+						} else {
+							_, err := db.SqlDB.Query("delete from call_userstatus where  ChannelUUid=?", CallModel.Calluuid)
+							if err != nil {
+								fmt.Println("删除坐席的status数据Err..>", err)
+							}
+						}
 					}
 					InsertRedisMQ(callAgent, CallModel)
 				}
-
 			case "CHANNEL_CREATE":
 				if msg.Headers["variable_direction"] == "inbound" && msg.Headers["Caller-Context"] == "public" {
 					//呼入过来的数据判断
@@ -411,7 +420,7 @@ func ConnectionEsl() (config *viper.Viper) {
 					CallModel.CalledNumber = msg.Headers["Caller-Callee-ID-Number"]
 
 					//写入数据库，外呼数据 ,如果直接用话机外呼，不记录数据
-					_, err := db.SqlDB.Query("INSERT into call_makecall (CallerNumber,CCAgent,ChannelUUid,TPRingTime,CallStatus) values(?,?,?,NOW(),'话机振铃')", CallModel.CalledNumber,
+					_, err := db.SqlDB.Query("INSERT into call_userstatus (CallerNumber,CCAgent,ChannelUUid,TPRingTime,CallStatus) values(?,?,?,NOW(),'话机振铃')", CallModel.CalledNumber,
 						AgentId, CallModel.Calluuid)
 					if err != nil {
 						fmt.Println("插入外呼表Err..>", err)
@@ -434,7 +443,7 @@ func ConnectionEsl() (config *viper.Viper) {
 					CallModel.CallNumber = msg.Headers["Caller-Caller-ID-Number"]
 					CallModel.CalledNumber = msg.Headers["Caller-Callee-ID-Number"]
 					if AgentId != "" {
-						_, err := db.SqlDB.Query("update call_makecall set CalleeRingTime=Now(),CallStatus='呼叫中',CalleeNumber=? where ChannelUUid=?", CallModel.CalledNumber, CallModel.Calluuid)
+						_, err := db.SqlDB.Query("update call_userstatus set CalleeRingTime=Now(),CallStatus='呼叫中',CalleeNumber=? where ChannelUUid=?", CallModel.CalledNumber, CallModel.Calluuid)
 						if err != nil {
 							fmt.Println("修改话机接起时间..Err..>", err)
 						}
@@ -442,6 +451,18 @@ func ConnectionEsl() (config *viper.Viper) {
 					} else {
 						fmt.Println("被叫振铃异常，原因找不到坐席相关的信息！")
 					}
+				}
+			case "CHANNEL_HOLD":
+				callUUid := msg.Headers["Channel-Call-UUID"]
+				_, err := db.SqlDB.Query("update call_userstatus set CallStatus='保持中' where ChannelUUid=?", callUUid)
+				if err != nil {
+					fmt.Println("修改状态为保持..Err..>", err)
+				}
+			case "CHANNEL_UNHOLD":
+				callUUid := msg.Headers["Channel-Call-UUID"]
+				_, err := db.SqlDB.Query("update call_userstatus set CallStatus='通话中' where ChannelUUid=?", callUUid)
+				if err != nil {
+					fmt.Println("修改状态为保持..Err..>", err)
 				}
 			default:
 				log.Infof("Got new message: %s", msg)
