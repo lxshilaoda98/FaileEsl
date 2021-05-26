@@ -207,8 +207,56 @@ func ConnectionEsl() (config *viper.Viper) {
 						CallModel.CallNumber = callAni
 						CallModel.CalledNumber = callAgent
 						InsertRedisMQ(callAgent, CallModel)
+						_, err := db.SqlDB.Query("update call_userstatus set CallType='in',CallerNumber=?,CalleeNumber=?,ChannelUUid=?,CallStatus='呼入响铃',CallRingTime=Now() where CCAgent=?",
+							callAni,callAgent,callSessionUUid,callAgent)
+						if err != nil {
+							fmt.Println("呼入坐席振铃..Err..>", err)
+						}
+					case "bridge-agent-start":
+						CCAgent := msg.Headers["CC-Agent"]
+						_, err := db.SqlDB.Query("update call_userstatus set CallStatus='呼入应答',CallAnswerTime=Now() where CCAgent=?", CCAgent)
+						if err != nil {
+							fmt.Println("呼入应答..Err..>", err)
+						}
+					case "bridge-agent-end":
+						CCAgent := msg.Headers["CC-Agent"]
+						fmt.Println("呼入销毁===========================",CCAgent)
+						_, err := db.SqlDB.Query("update call_userstatus set CallStatus='呼叫销毁',CallType=NULL,CallHangupTime=Now() where CCAgent=?", CCAgent)
+						if err != nil {
+							fmt.Println("呼入销毁..Err..>", err)
+						}else{
+							err:=client.BgApi("callcenter_config agent set status " + CCAgent + " 'On Break'")
+							if err != nil {
+								fmt.Println("bgapi err..>",err)
+							}
+							//查询是否需要切换成空闲状态
+							row:=db.SqlDB.QueryRow("select AutoReady from call_userstatus where CCAgent=?",CCAgent)
+							if err !=nil{
+								fmt.Println("查询Auto失败.Err..>",err)
+							}else{
+								var autoReady string
+								row.Scan(&autoReady)
+								fmt.Println("自动就绪时长为：",autoReady)
+								if autoReady != "" {
+									go func() {
+										se,_:=strconv.Atoi(autoReady)
+										if se >0{
+											time.Sleep(time.Duration(se)*time.Second)
+											fmt.Println(se,"秒后，进入空闲")
+											err:=client.BgApi("callcenter_config agent set status " + CCAgent + " 'Available'")
+											if err != nil {
+												fmt.Println("bgapi err..>",err)
+											}
+										} else{
+											fmt.Println("无需改变！")
+										}
+									}()
+								}
+							}
+						}
 					case "bridge-agent-fail":
 						callHangup := msg.Headers["CC-Hangup-Cause"]
+						CCAgent := msg.Headers["CC-Agent"]
 						if callHangup == "ORIGINATOR_CANCEL" {
 							fmt.Println("发起人放弃电话了..通知坐席")
 							callAni := msg.Headers["CC-Member-CID-Number"]
@@ -231,6 +279,10 @@ func ConnectionEsl() (config *viper.Viper) {
 						} else {
 							fmt.Println("连接失败原因..>", callHangup)
 						}
+						_, err := db.SqlDB.Query("update call_userstatus set CallStatus='接入失败',CallType=NULL,CallHangupTime=Now() where CCAgent=?", CCAgent)
+						if err != nil {
+							fmt.Println("接入失败..Err..>", err)
+						}
 					case "agent-status-change":
 						fmt.Println("坐席状态切换")
 						agentStatus := msg.Headers["CC-Agent-Status"]
@@ -244,6 +296,23 @@ func ConnectionEsl() (config *viper.Viper) {
 						CallModel.AgentStatusMsg = StatusMSG
 
 						InsertRedisMQ(callAgent, CallModel)
+						if agentStatus == "Logged Out" {
+							_, err := db.SqlDB.Query("update call_userstatus set CallStatus='注销状态',LoggedOutTime=Now() where CCAgent=?", callAgent)
+							if err != nil {
+								fmt.Println("修改状态为注销..Err..>", err)
+							}
+						}else if agentStatus == "Available" {
+							_, err := db.SqlDB.Query("update call_userstatus set CallStatus='空闲状态',AvailableTime=Now() where CCAgent=?", callAgent)
+							if err != nil {
+								fmt.Println("修改状态为空闲..Err..>", err)
+							}
+						}else if agentStatus == "On Break" {
+							_, err := db.SqlDB.Query("update call_userstatus set CallStatus='小休状态',OnBreakTime=Now() where CCAgent=?", callAgent)
+							if err != nil {
+								fmt.Println("修改状态为小休..Err..>", err)
+							}
+						}
+
 					case "agent-state-change":
 						fmt.Println("坐席在队列中的特定状态")
 						agentState := msg.Headers["CC-Agent-State"]
@@ -374,19 +443,19 @@ func ConnectionEsl() (config *viper.Viper) {
 				CallModel.CallHangupCause = ha.HaHangupCauseCause
 
 				if callAgent != "" {
-					_, err := db.SqlDB.Query("update call_userstatus set CallHangupTime=Now(),CallStatus='已销毁' where ChannelUUid=?", CallModel.Calluuid)
+					_, err := db.SqlDB.Query("update call_userstatus set CallHangupTime=Now(),CallStatus='呼叫销毁',CallType = NULL where ChannelUUid=?", CallModel.Calluuid)
 					if err != nil {
 						fmt.Println("修改通话销毁时间..Err..>", err)
 					} else {
-						_, err := db.SqlDB.Query("INSERT INTO call_makecall (CallerNumber,CalleeNumber,CCAgent,ChannelUUid,TPRingTime,TPAnswerTime,CalleeRingTime,CalleeAnswerTime,CallStatus,CallHangupTime)SELECT CallerNumber,CalleeNumber,CCAgent,ChannelUUid,TPRingTime,TPAnswerTime,CalleeRingTime,CalleeAnswerTime,CallStatus,CallHangupTime from call_userstatus where ChannelUUid =?", CallModel.Calluuid)
-						if err != nil {
-							fmt.Println("后处理数据异常Err..>", err)
-						} else {
-							_, err := db.SqlDB.Query("delete from call_userstatus where  ChannelUUid=?", CallModel.Calluuid)
-							if err != nil {
-								fmt.Println("删除坐席的status数据Err..>", err)
-							}
-						}
+						//_, err := db.SqlDB.Query("INSERT INTO call_makecall (CallerNumber,CalleeNumber,CCAgent,ChannelUUid,TPRingTime,TPAnswerTime,CalleeRingTime,CalleeAnswerTime,CallStatus,CallHangupTime)SELECT CallerNumber,CalleeNumber,CCAgent,ChannelUUid,TPRingTime,TPAnswerTime,CalleeRingTime,CalleeAnswerTime,CallStatus,CallHangupTime from call_userstatus where ChannelUUid =?", CallModel.Calluuid)
+						//if err != nil {
+						//	fmt.Println("后处理数据异常Err..>", err)
+						//} else {
+						//	_, err := db.SqlDB.Query("delete from call_userstatus where  ChannelUUid=?", CallModel.Calluuid)
+						//	if err != nil {
+						//		fmt.Println("删除坐席的status数据Err..>", err)
+						//	}
+						//}
 					}
 					InsertRedisMQ(callAgent, CallModel)
 				}
@@ -420,13 +489,16 @@ func ConnectionEsl() (config *viper.Viper) {
 					CallModel.CalledNumber = msg.Headers["Caller-Callee-ID-Number"]
 
 					//写入数据库，外呼数据 ,如果直接用话机外呼，不记录数据
-					_, err := db.SqlDB.Query("INSERT into call_userstatus (CallerNumber,CCAgent,ChannelUUid,TPRingTime,CallStatus) values(?,?,?,NOW(),'话机振铃')", CallModel.CalledNumber,
-						AgentId, CallModel.Calluuid)
-					if err != nil {
-						fmt.Println("插入外呼表Err..>", err)
-					}
+
+
 					if AgentId != "" {
 						InsertRedisMQ(AgentId, CallModel)
+
+						_, err := db.SqlDB.Query("update call_userstatus set CallerNumber =? ,CCAgent=?,ChannelUUid=?,TPRingTime=Now(),CallStatus='话机振铃',CallType='out' where CCAgent=?", CallModel.CalledNumber,
+							AgentId, CallModel.Calluuid,AgentId)
+						if err != nil {
+							fmt.Println("makeCall修改状态表Err..>", err)
+						}
 					} else {
 						fmt.Println("话机振铃异常，原因找不到坐席相关的信息！")
 					}
