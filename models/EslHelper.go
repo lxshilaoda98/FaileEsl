@@ -208,7 +208,7 @@ func ConnectionEsl() (config *viper.Viper) {
 						CallModel.CalledNumber = callAgent
 						InsertRedisMQ(callAgent, CallModel)
 						_, err := db.SqlDB.Query("update call_userstatus set CallType='in',CallerNumber=?,CalleeNumber=?,ChannelUUid=?,CallStatus='呼入响铃',CallRingTime=Now() where CCAgent=?",
-							callAni,callAgent,callSessionUUid,callAgent)
+							callAni, callAgent, callSessionUUid, callAgent)
 						if err != nil {
 							fmt.Println("呼入坐席振铃..Err..>", err)
 						}
@@ -220,39 +220,47 @@ func ConnectionEsl() (config *viper.Viper) {
 						}
 					case "bridge-agent-end":
 						CCAgent := msg.Headers["CC-Agent"]
-						fmt.Println("呼入销毁===========================",CCAgent)
+						fmt.Println("呼入销毁===========================", CCAgent)
 						_, err := db.SqlDB.Query("update call_userstatus set CallStatus='呼叫销毁',CallType=NULL,CallHangupTime=Now() where CCAgent=?", CCAgent)
 						if err != nil {
 							fmt.Println("呼入销毁..Err..>", err)
-						}else{
-							err:=client.BgApi("callcenter_config agent set status " + CCAgent + " 'On Break'")
+						} else {
+							err := client.BgApi("callcenter_config agent set status " + CCAgent + " 'On Break'")
 							if err != nil {
-								fmt.Println("bgapi err..>",err)
-							}
-							//查询是否需要切换成空闲状态
-							row:=db.SqlDB.QueryRow("select AutoReady from call_userstatus where CCAgent=?",CCAgent)
-							if err !=nil{
-								fmt.Println("查询Auto失败.Err..>",err)
-							}else{
-								var autoReady string
-								row.Scan(&autoReady)
-								fmt.Println("自动就绪时长为：",autoReady)
-								if autoReady != "" {
-									go func() {
-										se,_:=strconv.Atoi(autoReady)
-										if se >0{
-											time.Sleep(time.Duration(se)*time.Second)
-											fmt.Println(se,"秒后，进入空闲")
-											err:=client.BgApi("callcenter_config agent set status " + CCAgent + " 'Available'")
-											if err != nil {
-												fmt.Println("bgapi err..>",err)
-											}
-										} else{
-											fmt.Println("无需改变！")
+								fmt.Println("bgapi err..>", err)
+							} else {
+								//继续更新一下坐席的状态为后处理.
+								_, err := db.SqlDB.Query("update call_userstatus set OnBreakKey = 1,OnBreakVal='话后' where CCAgent = ? ", CCAgent)
+								if err != nil {
+									fmt.Println("修改坐席话后异常..>Err.>", err)
+								} else {
+									//查询是否需要切换成空闲状态
+									row := db.SqlDB.QueryRow("select AutoReady from call_userstatus where CCAgent=?", CCAgent)
+									if err != nil {
+										fmt.Println("查询Auto失败.Err..>", err)
+									} else {
+										var autoReady string
+										row.Scan(&autoReady)
+										fmt.Println("自动就绪时长为：", autoReady)
+										if autoReady != "" {
+											go func() {
+												se, _ := strconv.Atoi(autoReady)
+												if se > 0 {
+													time.Sleep(time.Duration(se) * time.Second)
+													fmt.Println(se, "秒后，进入空闲")
+													err := client.BgApi("callcenter_config agent set status " + CCAgent + " 'Available'")
+													if err != nil {
+														fmt.Println("bgapi err..>", err)
+													}
+												} else {
+													fmt.Println("无需改变！")
+												}
+											}()
 										}
-									}()
+									}
 								}
 							}
+
 						}
 					case "bridge-agent-fail":
 						callHangup := msg.Headers["CC-Hangup-Cause"]
@@ -301,12 +309,12 @@ func ConnectionEsl() (config *viper.Viper) {
 							if err != nil {
 								fmt.Println("修改状态为注销..Err..>", err)
 							}
-						}else if agentStatus == "Available" {
+						} else if agentStatus == "Available" {
 							_, err := db.SqlDB.Query("update call_userstatus set CallStatus='空闲状态',AvailableTime=Now() where CCAgent=?", callAgent)
 							if err != nil {
 								fmt.Println("修改状态为空闲..Err..>", err)
 							}
-						}else if agentStatus == "On Break" {
+						} else if agentStatus == "On Break" {
 							_, err := db.SqlDB.Query("update call_userstatus set CallStatus='小休状态',OnBreakTime=Now() where CCAgent=?", callAgent)
 							if err != nil {
 								fmt.Println("修改状态为小休..Err..>", err)
@@ -490,12 +498,11 @@ func ConnectionEsl() (config *viper.Viper) {
 
 					//写入数据库，外呼数据 ,如果直接用话机外呼，不记录数据
 
-
 					if AgentId != "" {
 						InsertRedisMQ(AgentId, CallModel)
 
 						_, err := db.SqlDB.Query("update call_userstatus set CallerNumber =? ,CCAgent=?,ChannelUUid=?,TPRingTime=Now(),CallStatus='话机振铃',CallType='out' where CCAgent=?", CallModel.CalledNumber,
-							AgentId, CallModel.Calluuid,AgentId)
+							AgentId, CallModel.Calluuid, AgentId)
 						if err != nil {
 							fmt.Println("makeCall修改状态表Err..>", err)
 						}
