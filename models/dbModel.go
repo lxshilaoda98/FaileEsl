@@ -34,7 +34,7 @@ func logout(AgentId []string) {
 			fmt.Printf("【登录redis】删除redis缓存数据Err..>%v \n", err)
 		} else {
 			fmt.Println(" 【登录redis】删除redis缓存数据成功!", res)
-			db.SqlDB.QueryRow("delete from agent_binding where AgentId = ?", v)
+			//db.SqlDB.QueryRow("delete from agent_binding where AgentId = ?", v)
 		}
 	}
 
@@ -43,7 +43,7 @@ func logout(AgentId []string) {
 //通过sip账号查找坐席的工号..
 func SipSelectAgent(SipPhone string) (AgentId string) {
 	fmt.Printf("查询%v数据 \n", SipPhone)
-	row := db.SqlDB.QueryRow("select AgentId from agent_binding where sipUser = ?", SipPhone)
+	row := db.SqlDB.QueryRow("select CCAgent from call_userstatus where CCSipUser = ?", SipPhone)
 	row.Scan(&AgentId)
 	return
 }
