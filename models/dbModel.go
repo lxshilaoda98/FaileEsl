@@ -7,22 +7,55 @@ import (
 	"time"
 )
 
-//插入消息到redis消息队列
-func InsertRedisMQ(callAgent string, CallModel CallModel) {
+//插入消息到redis消息队列  呼入->
+func InsertRedisMQForAgent(callAgent string, CallModel CallModel) {
+	insRedisByte, err := json.Marshal(CallModel)
+	if err != nil {
+		fmt.Println("String Convert Byte Err..>", err)
+	}
+	var token string
+	MQStr := string(insRedisByte)
+	rows := db.SqlDB.QueryRow("select Token from call_userstatus where CCAgent = ?",callAgent)
+	rows.Scan(&token)
+	fmt.Println(callAgent, " -> 添加消息队列：", MQStr,".>token.>",token)
+	if token !="" {
+		res, err := db.ClientRedis.RPush("call_event_msg_list_"+token, MQStr).Result()
+		if err != nil {
+			fmt.Println("RPush Err..>", err)
+		} else {
+			fmt.Println("[存入消息队列MQ]insert Redis Success! res >", res)
+			db.ClientRedis.Expire("call_event_msg_list_"+token, time.Hour*2)
+		}
+	}else{
+		fmt.Println("token 为空，将不存入队列")
+	}
+
+}
+
+func InsertRedisMQForSipUser(SipUser string, CallModel CallModel) {
 	insRedisByte, err := json.Marshal(CallModel)
 	if err != nil {
 		fmt.Println("String Convert Byte Err..>", err)
 	}
 	MQStr := string(insRedisByte)
-	fmt.Println(callAgent, " -> 添加消息队列：", MQStr)
-	res, err := db.ClientRedis.RPush("call_event_msg_list_"+callAgent, MQStr).Result()
-	if err != nil {
-		fmt.Println("RPush Err..>", err)
-	} else {
-		fmt.Println("[存入消息队列MQ]insert Redis Success! res >", res)
-		db.ClientRedis.Expire("call_event_msg_list_"+callAgent, time.Hour*2)
+	var token string
+	rows := db.SqlDB.QueryRow("select Token from call_userstatus where CCSipUser = ?",SipUser)
+	rows.Scan(&token)
+	fmt.Println(SipUser, " -> SIP 添加消息队列：", MQStr,".>token.>",token)
+	if token !="" {
+		res, err := db.ClientRedis.RPush("call_event_msg_list_"+token, MQStr).Result()
+		if err != nil {
+			fmt.Println("RPush Err..>", err)
+		} else {
+			fmt.Println("[存入消息队列MQ]insert Redis Success! res >", res)
+			db.ClientRedis.Expire("call_event_msg_list_"+token, time.Hour*2)
+		}
+	}else{
+		fmt.Println("token 为空，将不存入队列")
 	}
+
 }
+
 
 //退出方法，清理redis缓存和db的binding数据
 func logout(AgentId []string) {
@@ -45,5 +78,11 @@ func SipSelectAgent(SipPhone string) (AgentId string) {
 	fmt.Printf("查询%v数据 \n", SipPhone)
 	row := db.SqlDB.QueryRow("select CCAgent from call_userstatus where CCSipUser = ?", SipPhone)
 	row.Scan(&AgentId)
+	return
+}
+func SipSelectToken(SipPhone string)(Token string){
+	fmt.Printf("查询%v数据 \n", SipPhone)
+	row := db.SqlDB.QueryRow("select Token from call_userstatus where CCSipUser = ?", SipPhone)
+	row.Scan(&Token)
 	return
 }

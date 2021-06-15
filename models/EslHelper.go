@@ -143,7 +143,8 @@ func ConnectionEsl() (config *viper.Viper) {
 					CallModel.Event_mess = "注销sip账号"
 					CallModel.Event_time = time.Now().UnixNano() / 1e6
 					CallModel.CalledNumber = callAgent
-					InsertRedisMQ(callAgent, CallModel)
+
+					InsertRedisMQForSipUser(callAgent, CallModel)
 
 				case "sofia::register":
 					fmt.Printf("【注册成功账号】来自ip.>%v .注册sip账号：%v \n 联系地址：%v 域：%v \n 客户端：%v \n",
@@ -163,7 +164,7 @@ func ConnectionEsl() (config *viper.Viper) {
 					CallModel.Event_mess = "sip账号错误"
 					CallModel.Event_time = time.Now().UnixNano() / 1e6
 					CallModel.CalledNumber = callAgent
-					InsertRedisMQ(callAgent, CallModel)
+					InsertRedisMQForSipUser(callAgent, CallModel)
 				case "sofia::wrong_call_state":
 					ipName = msg.Headers["network_ip"]
 					fmt.Println("错误的异常呼叫..>", ipName)
@@ -206,7 +207,7 @@ func ConnectionEsl() (config *viper.Viper) {
 						CallModel.Event_time = time.Now().UnixNano() / 1e6
 						CallModel.CallNumber = callAni
 						CallModel.CalledNumber = callAgent
-						InsertRedisMQ(callAgent, CallModel)
+						InsertRedisMQForAgent(callAgent, CallModel)
 						_, err := db.SqlDB.Query("update call_userstatus set CallType='in',CallerNumber=?,CalleeNumber=?,ChannelUUid=?,CallStatus='呼入响铃',CallRingTime=Now() where CCAgent=?",
 							callAni, callAgent, callSessionUUid, callAgent)
 						if err != nil {
@@ -282,7 +283,7 @@ func ConnectionEsl() (config *viper.Viper) {
 							CallModel.CalledNumber = callAgent
 							CallModel.CallHangupCause = callHangup
 
-							InsertRedisMQ(callAgent, CallModel)
+							InsertRedisMQForAgent(callAgent, CallModel)
 
 						} else {
 							fmt.Println("连接失败原因..>", callHangup)
@@ -303,7 +304,7 @@ func ConnectionEsl() (config *viper.Viper) {
 						StatusMSG := helper.ConvertCN(agentStatus)
 						CallModel.AgentStatusMsg = StatusMSG
 
-						InsertRedisMQ(callAgent, CallModel)
+						InsertRedisMQForAgent(callAgent, CallModel)
 						if agentStatus == "Logged Out" {
 							_, err := db.SqlDB.Query("update call_userstatus set CallStatus='注销状态',LoggedOutTime=Now() where CCAgent=?", callAgent)
 							if err != nil {
@@ -333,7 +334,7 @@ func ConnectionEsl() (config *viper.Viper) {
 						StateMSG := helper.ConvertCN(agentState)
 						CallModel.AgentStateMsg = StateMSG
 
-						InsertRedisMQ(callAgent, CallModel)
+						InsertRedisMQForAgent(callAgent, CallModel)
 					}
 				case "verto::client_disconnect":
 					fmt.Println("freeswitch 服务断开...发起重新连接！")
@@ -392,7 +393,7 @@ func ConnectionEsl() (config *viper.Viper) {
 							fmt.Println("修改被叫接听时间..Err..>", err)
 						}
 					}
-					InsertRedisMQ(callAgent, CallModel)
+					InsertRedisMQForSipUser(callAgent, CallModel)
 				}
 			case "CHANNEL_DESTROY":
 				//fmt.Println("销毁电话..>",msg.Headers["Caller-Callee-ID-Number"])
@@ -436,9 +437,6 @@ func ConnectionEsl() (config *viper.Viper) {
 							callAgent = SipSelectAgent(msg.Headers["Caller-Caller-ID-Number"])
 						}
 					}
-					//else if msg.Headers["variable_sofia_profile_name"] == "external" {
-					//	eventMsg = "电话销毁"  //线路挂断
-					//}
 
 				}
 				CallModel := CallModel{}
@@ -455,17 +453,8 @@ func ConnectionEsl() (config *viper.Viper) {
 					if err != nil {
 						fmt.Println("修改通话销毁时间..Err..>", err)
 					} else {
-						//_, err := db.SqlDB.Query("INSERT INTO call_makecall (CallerNumber,CalleeNumber,CCAgent,ChannelUUid,TPRingTime,TPAnswerTime,CalleeRingTime,CalleeAnswerTime,CallStatus,CallHangupTime)SELECT CallerNumber,CalleeNumber,CCAgent,ChannelUUid,TPRingTime,TPAnswerTime,CalleeRingTime,CalleeAnswerTime,CallStatus,CallHangupTime from call_userstatus where ChannelUUid =?", CallModel.Calluuid)
-						//if err != nil {
-						//	fmt.Println("后处理数据异常Err..>", err)
-						//} else {
-						//	_, err := db.SqlDB.Query("delete from call_userstatus where  ChannelUUid=?", CallModel.Calluuid)
-						//	if err != nil {
-						//		fmt.Println("删除坐席的status数据Err..>", err)
-						//	}
-						//}
 					}
-					InsertRedisMQ(callAgent, CallModel)
+					InsertRedisMQForSipUser(callAgent, CallModel)
 				}
 			case "CHANNEL_CREATE":
 				if msg.Headers["variable_direction"] == "inbound" && msg.Headers["Caller-Context"] == "public" {
@@ -499,7 +488,7 @@ func ConnectionEsl() (config *viper.Viper) {
 					//写入数据库，外呼数据 ,如果直接用话机外呼，不记录数据
 
 					if AgentId != "" {
-						InsertRedisMQ(AgentId, CallModel)
+						InsertRedisMQForSipUser(AgentId, CallModel)
 
 						_, err := db.SqlDB.Query("update call_userstatus set CallerNumber =? ,CCAgent=?,ChannelUUid=?,TPRingTime=Now(),CallStatus='话机振铃',CallType='out' where CCAgent=?", CallModel.CalledNumber,
 							AgentId, CallModel.Calluuid, AgentId)
@@ -526,7 +515,7 @@ func ConnectionEsl() (config *viper.Viper) {
 						if err != nil {
 							fmt.Println("修改话机接起时间..Err..>", err)
 						}
-						InsertRedisMQ(AgentId, CallModel)
+						InsertRedisMQForSipUser(AgentId, CallModel)
 					} else {
 						fmt.Println("被叫振铃异常，原因找不到坐席相关的信息！")
 					}
