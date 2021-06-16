@@ -396,7 +396,6 @@ func ConnectionEsl() (config *viper.Viper) {
 				//	call=callerNumber
 				//}
 				InsertRedisMQForSipUser(call, CallModel)
-
 			case "CHANNEL_DESTROY":
 				//fmt.Println("销毁电话..>",msg)
 				ha := helper.HaHangupV{}
@@ -471,7 +470,6 @@ func ConnectionEsl() (config *viper.Viper) {
 
 				}
 				InsertRedisMQForSipUser(call, CallModel)
-
 			case "CHANNEL_CREATE":
 				if msg.Headers["variable_direction"] == "inbound" && msg.Headers["Caller-Context"] == "public" {
 					//呼入过来的数据判断
@@ -538,12 +536,30 @@ func ConnectionEsl() (config *viper.Viper) {
 				}
 			case "CHANNEL_HOLD":
 				callUUid := msg.Headers["Channel-Call-UUID"]
+				token := SipSelectTokenForCUUid(callUUid)
+				CallModel := CallModel{}
+				CallModel.Calluuid = callUUid
+				CallModel.Event_type = "1406"
+				CallModel.Event_mess = "保持"
+				CallModel.Event_time = time.Now().UnixNano() / 1e6
+				CallModel.CallNumber = msg.Headers["Caller-Caller-ID-Number"]
+				CallModel.CalledNumber = msg.Headers["Caller-Callee-ID-Number"]
+				InsertRedisMQForToken(token, CallModel)
 				_, err := db.SqlDB.Query("update call_userstatus set CallStatus='保持中' where ChannelUUid=?", callUUid)
 				if err != nil {
 					fmt.Println("修改状态为保持..Err..>", err)
 				}
 			case "CHANNEL_UNHOLD":
 				callUUid := msg.Headers["Channel-Call-UUID"]
+				token := SipSelectTokenForCUUid(callUUid)
+				CallModel := CallModel{}
+				CallModel.Calluuid = callUUid
+				CallModel.Event_type = "1407"
+				CallModel.Event_mess = "取消保持"
+				CallModel.Event_time = time.Now().UnixNano() / 1e6
+				CallModel.CallNumber = msg.Headers["Caller-Caller-ID-Number"]
+				CallModel.CalledNumber = msg.Headers["Caller-Callee-ID-Number"]
+				InsertRedisMQForToken(token, CallModel)
 				_, err := db.SqlDB.Query("update call_userstatus set CallStatus='通话中' where ChannelUUid=?", callUUid)
 				if err != nil {
 					fmt.Println("修改状态为保持..Err..>", err)

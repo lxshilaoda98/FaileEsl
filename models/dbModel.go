@@ -58,6 +58,29 @@ func InsertRedisMQForSipUser(SipUser string, CallModel CallModel) {
 
 }
 
+func InsertRedisMQForToken(token string, CallModel CallModel) {
+	fmt.Println("MQ..>token.>", token)
+	insRedisByte, err := json.Marshal(CallModel)
+	if err != nil {
+		fmt.Println("String Convert Byte Err..>", err)
+	}
+	MQStr := string(insRedisByte)
+
+	fmt.Println(" -> SIP 添加消息队列：", MQStr, ".>token.>", token)
+	if token != "" {
+		res, err := db.ClientRedis.RPush("call_event_msg_list_"+token, MQStr).Result()
+		if err != nil {
+			fmt.Println("RPush Err..>", err)
+		} else {
+			fmt.Println("[存入消息队列MQ]insert Redis Success! res >", res)
+			db.ClientRedis.Expire("call_event_msg_list_"+token, time.Hour*2)
+		}
+	} else {
+		fmt.Println("token 为空，将不存入队列")
+	}
+
+}
+
 //退出方法，清理redis缓存和db的binding数据
 func logout(AgentId []string) {
 	//首先清理redis的登录成功缓存
@@ -81,9 +104,10 @@ func SipSelectAgent(SipPhone string) (AgentId string) {
 	row.Scan(&AgentId)
 	return
 }
-func SipSelectToken(SipPhone string) (Token string) {
-	fmt.Printf("查询%v数据 \n", SipPhone)
-	row := db.SqlDB.QueryRow("select Token from call_userstatus where CCSipUser = ?", SipPhone)
+
+func SipSelectTokenForCUUid(uuid string) (Token string) {
+	fmt.Printf("查询%v数据 \n", uuid)
+	row := db.SqlDB.QueryRow("select Token from call_userstatus where ChannelUUId = ?", uuid)
 	row.Scan(&Token)
 	return
 }
