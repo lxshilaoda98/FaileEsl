@@ -429,6 +429,8 @@ func ConnectionEsl() (config *viper.Viper) {
 							eventMsg = "电话销毁" //只需要判断一个挂断即可
 							//callAgent = SipSelectAgent(callNumber)
 							call = callerNumber
+						} else {
+							call = callNumber
 						}
 					}
 
