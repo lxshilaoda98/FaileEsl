@@ -552,7 +552,7 @@ func ConnectionEsl() (config *viper.Viper) {
 				CallModel.CallNumber = msg.Headers["Caller-Caller-ID-Number"]
 				CallModel.CalledNumber = msg.Headers["Caller-Callee-ID-Number"]
 				InsertRedisMQForToken(token, CallModel)
-				_, err := db.SqlDB.Query("update call_userstatus set CallStatus='保持中' where ChannelUUid=?", callUUid)
+				_, err := db.SqlDB.Query("update call_userstatus set CallStatus='保持中',HoldTime=Now() where ChannelUUid=?", callUUid)
 				if err != nil {
 					fmt.Println("修改状态为保持..Err..>", err)
 				}
