@@ -378,10 +378,23 @@ func ConnectionEsl() (config *viper.Viper) {
 					call = callNumber
 					CallModel.Event_type = "1404"
 					CallModel.Event_mess = "被叫接听"
-					_, err := db.SqlDB.Query("update call_userstatus set CalleeAnswerTime=Now(),CallStatus='通话中' where ChannelUUid=?", callUUid)
-					if err != nil {
-						fmt.Println("修改被叫接听时间..Err..>", err)
+					var Istrasfer int
+					rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=?", CallModel.Calluuid)
+					rows.Scan(&Istrasfer)
+					if Istrasfer > 0 {
+						CallModel.Event_type = "1702"
+						CallModel.Event_mess = "转接接听"
+						_, err := db.SqlDB.Query("update call_userstatus set CalleeAnswerTime=Now(),CallStatus='通话中' where ChannelUUid=?", callUUid)
+						if err != nil {
+							fmt.Println("修改被叫接听时间..Err..>", err)
+						}
+					} else {
+						_, err := db.SqlDB.Query("update call_userstatus set CalleeAnswerTime=Now(),CallStatus='通话中' where ChannelUUid=?", callUUid)
+						if err != nil {
+							fmt.Println("修改被叫接听时间..Err..>", err)
+						}
 					}
+
 				} else {
 					call = callerNumber
 					CallModel.Event_type = "1402"
@@ -455,6 +468,14 @@ func ConnectionEsl() (config *viper.Viper) {
 					fmt.Println("被叫挂机..>")
 				} else if call == callNumber {
 					fmt.Println("主叫挂机..>")
+				}
+				var Istrasfer int
+				//查询是否是转接的被叫振铃
+				rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=?", msg.Headers["Channel-Call-UUID"])
+				rows.Scan(&Istrasfer)
+				if Istrasfer > 0 {
+					eventType = "1703"
+					eventMsg = "转接销毁"
 				}
 				CallModel := CallModel{}
 				CallModel.Calluuid = msg.Headers["Channel-Call-UUID"]
@@ -531,10 +552,23 @@ func ConnectionEsl() (config *viper.Viper) {
 					CallModel.Event_time = time.Now().UnixNano() / 1e6
 					CallModel.CallNumber = callerNumber
 					CallModel.CalledNumber = calleeNumber
+					var Istrasfer int
 					if AgentId != "" {
-						_, err := db.SqlDB.Query("update call_userstatus set CalleeRingTime=Now(),CallStatus='呼叫中',CalleeNumber=? where ChannelUUid=?", CallModel.CalledNumber, CallModel.Calluuid)
-						if err != nil {
-							fmt.Println("修改话机接起时间..Err..>", err)
+						//查询是否是转接的被叫振铃
+						rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=?", CallModel.Calluuid)
+						rows.Scan(&Istrasfer)
+						if Istrasfer > 0 {
+							CallModel.Event_type = "1701"
+							CallModel.Event_mess = "转接振铃"
+							_, err := db.SqlDB.Query("update call_userstatus set CalleeRingTime=Now(),CallStatus='转接振铃中',CalleeNumber=? where ChannelUUid=?", CallModel.CalledNumber, CallModel.Calluuid)
+							if err != nil {
+								fmt.Println("修改话机接起时间..Err..>", err)
+							}
+						} else {
+							_, err := db.SqlDB.Query("update call_userstatus set CalleeRingTime=Now(),CallStatus='呼叫中',CalleeNumber=? where ChannelUUid=?", CallModel.CalledNumber, CallModel.Calluuid)
+							if err != nil {
+								fmt.Println("修改话机接起时间..Err..>", err)
+							}
 						}
 						InsertRedisMQForSipUser(call, CallModel)
 					} else {
