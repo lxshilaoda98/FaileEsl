@@ -379,12 +379,12 @@ func ConnectionEsl() (config *viper.Viper) {
 					CallModel.Event_type = "1404"
 					CallModel.Event_mess = "被叫接听"
 					var Istrasfer int
-					rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=?", CallModel.Calluuid)
+					rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=? and CallStatus='转接振铃中'", CallModel.Calluuid)
 					rows.Scan(&Istrasfer)
 					if Istrasfer > 0 {
 						CallModel.Event_type = "1702"
 						CallModel.Event_mess = "转接接听"
-						_, err := db.SqlDB.Query("update call_userstatus set CalleeAnswerTime=Now(),CallStatus='通话中' where ChannelUUid=?", callUUid)
+						_, err := db.SqlDB.Query("update call_userstatus set CalleeAnswerTime=Now(),CallStatus='转接通话中' where ChannelUUid=?", callUUid)
 						if err != nil {
 							fmt.Println("修改被叫接听时间..Err..>", err)
 						}
@@ -471,7 +471,7 @@ func ConnectionEsl() (config *viper.Viper) {
 				}
 				var Istrasfer int
 				//查询是否是转接的被叫振铃
-				rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=?", msg.Headers["Channel-Call-UUID"])
+				rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=? and CallStatus='转接通话中' ", msg.Headers["Channel-Call-UUID"])
 				rows.Scan(&Istrasfer)
 				if Istrasfer > 0 {
 					eventType = "1703"
@@ -555,7 +555,7 @@ func ConnectionEsl() (config *viper.Viper) {
 					var Istrasfer int
 					if AgentId != "" {
 						//查询是否是转接的被叫振铃
-						rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=?", CallModel.Calluuid)
+						rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=? and CallStatus='转接操作中'", CallModel.Calluuid)
 						rows.Scan(&Istrasfer)
 						if Istrasfer > 0 {
 							CallModel.Event_type = "1701"
