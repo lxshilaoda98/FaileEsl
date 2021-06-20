@@ -394,6 +394,12 @@ func ConnectionEsl() (config *viper.Viper) {
 							fmt.Println("修改被叫接听时间..Err..>", err)
 						}
 					}
+					//如果是拨打的内线分机，就去查找一下是否有对于的人，通知他！
+					if len(callerNumber) == 4 {
+						CallModel.Event_type = "1402"
+						CallModel.Event_mess = "话机接起"
+						InsertRedisMQForSipUser(callerNumber, CallModel)
+					}
 
 				} else {
 					call = callerNumber
@@ -485,6 +491,12 @@ func ConnectionEsl() (config *viper.Viper) {
 				CallModel.CallNumber = callNumber
 				CallModel.CalledNumber = callerNumber
 				CallModel.CallHangupCause = ha.HaHangupCauseCause
+				//新增一个内线分机销毁事件
+				if len(callerNumber) == 4 {
+					CallModel.Event_type = "1405"
+					CallModel.Event_mess = "电话销毁"
+					InsertRedisMQForSipUser(callerNumber, CallModel)
+				}
 
 				_, err := db.SqlDB.Query("update call_userstatus set OnBreakKey = 1,OnBreakVal='话后',CallStatus='小休状态',OnBreakTime=Now() where ChannelUUid=? ", CallModel.Calluuid)
 				if err != nil {
@@ -539,12 +551,6 @@ func ConnectionEsl() (config *viper.Viper) {
 					calleeNumber := msg.Headers["Caller-Callee-ID-Number"]
 					fmt.Println("主叫：", callerNumber)
 					fmt.Println("被叫：", calleeNumber)
-					call := callerNumber
-					if callerNumber == "0000000000" {
-						call = calleeNumber
-					}
-					//通过话机找到现在关联的坐席人员信息...
-					AgentId := SipSelectAgent(call)
 					CallModel := CallModel{}
 					CallModel.Calluuid = msg.Headers["Channel-Call-UUID"]
 					CallModel.Event_type = "1403"
@@ -552,6 +558,15 @@ func ConnectionEsl() (config *viper.Viper) {
 					CallModel.Event_time = time.Now().UnixNano() / 1e6
 					CallModel.CallNumber = callerNumber
 					CallModel.CalledNumber = calleeNumber
+
+					call := callerNumber
+					if callerNumber == "0000000000" {
+						call = calleeNumber
+					}
+
+					//通过话机找到现在关联的坐席人员信息...
+					AgentId := SipSelectAgent(call)
+
 					var Istrasfer int
 					if AgentId != "" {
 						//查询是否是转接的被叫振铃
