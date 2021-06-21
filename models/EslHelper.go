@@ -396,6 +396,7 @@ func ConnectionEsl() (config *viper.Viper) {
 					}
 					//如果是拨打的内线分机，就去查找一下是否有对于的人，通知他！
 					if len(callerNumber) == 4 {
+						fmt.Println("被叫等于4位，添加话机接起事件！")
 						CallModel.Event_type = "1402"
 						CallModel.Event_mess = "话机接起"
 						InsertRedisMQForSipUser(callerNumber, CallModel)
@@ -565,13 +566,14 @@ func ConnectionEsl() (config *viper.Viper) {
 					}
 
 					//通过话机找到现在关联的坐席人员信息...
-					AgentId := SipSelectAgent(call)
+					//AgentId := SipSelectAgent(call)
 
 					var Istrasfer int
-					if AgentId != "" {
+					//if AgentId != "" {
 						//查询是否是转接的被叫振铃
 						rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=? and CallStatus='转接操作中'", CallModel.Calluuid)
 						rows.Scan(&Istrasfer)
+						fmt.Println("查看是否是转接的电话...>",Istrasfer,"UUID..>",CallModel.Calluuid)
 						if Istrasfer > 0 {
 							CallModel.Event_type = "1701"
 							CallModel.Event_mess = "转接振铃"
@@ -586,9 +588,9 @@ func ConnectionEsl() (config *viper.Viper) {
 							}
 						}
 						InsertRedisMQForSipUser(call, CallModel)
-					} else {
-						fmt.Println("被叫振铃异常，原因找不到坐席相关的信息！")
-					}
+					//} else {
+					//	fmt.Println("被叫振铃异常，原因找不到坐席相关的信息！")
+					//}
 				}
 			case "CHANNEL_HOLD":
 				callUUid := msg.Headers["Channel-Call-UUID"]
