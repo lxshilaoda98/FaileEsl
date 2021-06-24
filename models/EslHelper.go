@@ -405,13 +405,13 @@ func ConnectionEsl() (config *viper.Viper) {
 							CallModel.Event_mess = "坐席振铃"
 							InsertRedisMQForSipUser(callerNumber, CallModel)
 
-							CallModel.Event_type = "1702"
-							CallModel.Event_mess = "转接接听"
-							_, err := db.SqlDB.Query("update call_userstatus set CalleeAnswerTime=Now(),CallStatus='转接通话中' where ChannelUUid=?", callUUid)
+							CallModel.Event_type = "1401"
+							CallModel.Event_mess = "话机振铃"
+							_, err := db.SqlDB.Query("update call_userstatus set CalleeAnswerTime=Now(),CallStatus='话机振铃' where ChannelUUid=?", callUUid)
 							if err != nil {
 								fmt.Println("修改被叫接听时间..Err..>", err)
 							}
-							InsertRedisMQForSipUser(call, CallModel)
+							InsertRedisMQForSipUser(callerNumber, CallModel)
 						}
 						fmt.Println("被叫等于4位，添加话机接起事件！")
 						CallModel.Event_type = "1402"
