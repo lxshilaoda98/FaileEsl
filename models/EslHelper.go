@@ -459,14 +459,6 @@ func ConnectionEsl() (config *viper.Viper) {
 				fmt.Println("销毁Calluuid..>", callUUid)
 				fmt.Println("销毁orherUUid..>", otherUUid)
 
-				CallModel.Calluuid = msg.Headers["Channel-Call-UUID"]
-				CallModel.Event_type = eventType
-				CallModel.Event_mess = eventMsg
-				CallModel.Event_time = callerHangupTime
-				CallModel.CallNumber = callNumber
-				CallModel.CalledNumber = callerNumber
-				CallModel.CallHangupCause = ha.HaHangupCauseCause
-
 				ha = helper.ErrConvertCN(msg.Headers["Hangup-Cause"])
 				if callType == "inbound" {
 					if msg.Headers["Caller-Destination-Number"] == "voicemail" {
