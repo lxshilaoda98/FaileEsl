@@ -443,7 +443,7 @@ func ConnectionEsl() (config *viper.Viper) {
 				callerNumber := msg.Headers["Caller-Callee-ID-Number"] // 被叫
 				callerHangupTime := time.Now().UnixNano() / 1e6        //拒绝时间
 
-				CallModel := CallModel{}
+				
 				CallModel.Calluuid = msg.Headers["Channel-Call-UUID"]
 				CallModel.Event_type = eventType
 				CallModel.Event_mess = eventMsg
