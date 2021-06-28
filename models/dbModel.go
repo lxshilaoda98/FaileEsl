@@ -105,6 +105,13 @@ func SipSelectAgent(SipPhone string) (AgentId string) {
 	return
 }
 
+func AgentSelectContact(AgentId string) (Contact string) {
+	fmt.Printf("查询%v数据 \n", AgentId)
+	row := db.SqlDB.QueryRow("select CCAgent from CCSipUser where CCAgent = ?", AgentId)
+	row.Scan(&Contact)
+	return
+}
+
 func SipSelectTokenForCUUid(uuid string) (Token string) {
 	fmt.Printf("查询%v数据 \n", uuid)
 	row := db.SqlDB.QueryRow("select Token from call_userstatus where ChannelUUId = ?", uuid)
