@@ -534,6 +534,7 @@ func ConnectionEsl() (config *viper.Viper) {
 						InsertRedisMQForSipUser(callerNumber, CallModel)
 					}
 				} else if call == callNumber {
+
 					fmt.Println("主叫挂机..>")
 					if callerNumber != "0000000000" {
 						//如果被叫不是0000默认号码的话，就去尝试通知主叫，否则通知被叫
@@ -542,9 +543,18 @@ func ConnectionEsl() (config *viper.Viper) {
 						InsertRedisMQForSipUser(callNumber, CallModel)
 
 						if len(callerNumber) == 4 && Istrasfer <= 0 {
-							CallModel.Event_type = "1405"
-							CallModel.Event_mess = "电话销毁"
-							InsertRedisMQForSipUser(callerNumber, CallModel)
+							var Numbers int8
+							rows:= db.SqlDB.QueryRow("select count(*) as count from calls where callee_uuid = ? or call_uuid =?",otherUUid,otherUUid)
+							rows.Scan(&Numbers)
+							fmt.Println("查询是否本次挂断电话是否还在通话..",Numbers)
+							if Numbers <= 0 {
+								fmt.Println("没有找到通话数据，允许挂断..")
+								CallModel.Event_type = "1405"
+								CallModel.Event_mess = "电话销毁"
+								InsertRedisMQForSipUser(callerNumber, CallModel)
+							} else{
+								fmt.Println("还有通话，不挂断!")
+							}
 						}
 					} else {
 						eventType = "1405"
@@ -552,13 +562,6 @@ func ConnectionEsl() (config *viper.Viper) {
 						InsertRedisMQForSipUser(callerNumber, CallModel)
 					}
 				}
-
-				//if Istrasfer > 0 {
-				//	//eventType = "1703"
-				//	//eventMsg = "转接销毁"
-				//	eventType = "1405"
-				//	eventMsg = "电话销毁"
-				//}
 
 				if Istrasfer > 0 {
 					CallModel.Event_type = "1703"
@@ -740,6 +743,7 @@ func ConnectionEsl() (config *viper.Viper) {
 
 					fmt.Println("[被叫]呼叫未知..>主叫：", CallModel.CallNumber)
 					fmt.Println("[被叫]呼叫未知..>被叫：", CallModel.CalledNumber)
+
 
 					CallModel.Event_type = "1301"
 					CallModel.Event_mess = "坐席振铃"
