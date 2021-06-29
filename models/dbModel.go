@@ -34,6 +34,16 @@ func InsertRedisMQForAgent(callAgent string, CallModel CallModel) {
 }
 
 func InsertRedisMQForSipUser(SipUser string, CallModel CallModel) {
+	switch CallModel.Event_type {
+	case "1402":
+		sql := "update call_userstatus set CalleeAnswerTime=Now(),CallStatus='通话中' where CCSipUser=?"
+		updateAgentStatus(sql, SipUser)
+	case "1405":
+		sql := "update call_userstatus set OnBreakKey = 1,OnBreakVal='话后',OnBreakTime=Now(),CallStatus='小休状态' where CCSipUser = ?"
+		updateAgentStatus(sql, SipUser)
+	default:
+		fmt.Println("No Run SQL..>")
+	}
 	fmt.Println("MQ..>SipUSer.>", SipUser)
 	insRedisByte, err := json.Marshal(CallModel)
 	if err != nil {
@@ -81,6 +91,26 @@ func InsertRedisMQForToken(token string, CallModel CallModel) {
 
 }
 
+func GetSipUser(callNumber, calleeNumber string) (SipUser string) {
+	row := db.SqlDB.QueryRow("select CCSipUser from call_userstatus where CallerNumber=? and CalleeNumber=?", callNumber, calleeNumber)
+	row.Scan(&SipUser)
+	return
+}
+
+//通过sipuser。修改坐席的状态
+func updateAgentStatus(sql, SipUser string) {
+	fmt.Println("Run SQL>>", sql)
+	if SipUser != "" {
+		_, err := db.SqlDB.Query(sql, SipUser)
+		if err != nil {
+			fmt.Println("修改坐席状态..Err..>", err)
+		}
+	} else {
+		fmt.Println("没有找到SIP用户信息!")
+	}
+
+}
+
 //退出方法，清理redis缓存和db的binding数据
 func logout(AgentId []string) {
 	//首先清理redis的登录成功缓存
@@ -107,7 +137,7 @@ func SipSelectAgent(SipPhone string) (AgentId string) {
 
 func AgentSelectContact(AgentId string) (Contact string) {
 	fmt.Printf("查询%v数据 \n", AgentId)
-	row := db.SqlDB.QueryRow("select CCAgent from CCSipUser where CCAgent = ?", AgentId)
+	row := db.SqlDB.QueryRow("select CCSipUser from call_userstatus where CCAgent = ?", AgentId)
 	row.Scan(&Contact)
 	return
 }
