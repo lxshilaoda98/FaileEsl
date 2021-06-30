@@ -385,7 +385,10 @@ func ConnectionEsl() (config *viper.Viper) {
 					CallModel.Event_type = "1404"
 					CallModel.Event_mess = "被叫接听"
 					var Istrasfer int
-					rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=? and CallStatus='转接振铃中'", CallModel.Calluuid)
+
+					//rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=? and CallStatus='转接振铃中'", CallModel.Calluuid)
+					//rows.Scan(&Istrasfer)
+					rows := db.SqlDB.QueryRow("select count(*) as count from calls where call_uuid=? and caller_uuid=? ",CallModel.Calluuid,CallModel.Calluuid)
 					rows.Scan(&Istrasfer)
 					fmt.Println("查找数据 ChannelUUid ..>", CallModel.Calluuid)
 					if Istrasfer > 0 {
@@ -644,20 +647,27 @@ func ConnectionEsl() (config *viper.Viper) {
 
 					//if AgentId != "" {
 					var Istrasfer = 0
-					rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=? and CallStatus='转接操作中' ",
-						CallModel.Calluuid)
+					//rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=? and CallStatus='转接操作中' ",
+					//	CallModel.Calluuid)
+					//rows.Scan(&Istrasfer)
+					rows := db.SqlDB.QueryRow("select count(*) as count from calls where call_uuid=? and caller_uuid=? ", CallModel.Calluuid,CallModel.Calluuid)
 					rows.Scan(&Istrasfer)
 					if Istrasfer > 0 {
 						var CCSipUser = ""
 						//找到真正要通知的人信息
-						rows = db.SqlDB.QueryRow("select CCSipUser from call_userstatus where ChannelUUid=?",
-							CallModel.Calluuid)
+						//rows = db.SqlDB.QueryRow("select CCSipUser from call_userstatus where ChannelUUid=?",
+						//	CallModel.Calluuid)
+						rows = db.SqlDB.QueryRow("select dest as CCSipUser from channels where cid_num=? and accountcode=? ",
+							call,callee)
 						rows.Scan(&CCSipUser)
+						fmt.Println("真正通知：",CCSipUser)
 
 						CallModel.CallNumber = CCSipUser
 						CallModel.CalledNumber = callee
 						CallModel.Event_type = "1701"
 						CallModel.Event_mess = "转接振铃"
+
+
 
 						InsertRedisMQForSipUser(CCSipUser, CallModel)
 						_, err := db.SqlDB.Query("update call_userstatus set CalleeRingTime=Now(),CallStatus='转接振铃中',CalleeNumber=? where ChannelUUid=?", CallModel.CalledNumber, CallModel.Calluuid)
@@ -713,7 +723,9 @@ func ConnectionEsl() (config *viper.Viper) {
 					var Istrasfer int
 					//if AgentId != "" {
 					//查询是否是转接的被叫振铃
-					rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=? and CallStatus='转接操作中'", CallModel.Calluuid)
+					//rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=? and CallStatus='转接操作中'", CallModel.Calluuid)
+					//rows.Scan(&Istrasfer)
+					rows := db.SqlDB.QueryRow("select count(*) as count from calls where call_uuid=? and caller_uuid=? ", CallModel.Calluuid,CallModel.Calluuid)
 					rows.Scan(&Istrasfer)
 					fmt.Println("查看是否是转接的电话...>", Istrasfer, "UUID..>", CallModel.Calluuid)
 					if Istrasfer > 0 {
@@ -753,7 +765,9 @@ func ConnectionEsl() (config *viper.Viper) {
 					InsertRedisMQForSipUser(CallNumber, CallModel)
 
 					var Istrasfer int
-					rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=? and CallStatus='转接操作中'", CallModel.Calluuid)
+					//rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=? and CallStatus='转接操作中'", CallModel.Calluuid)
+					//rows.Scan(&Istrasfer)
+					rows := db.SqlDB.QueryRow("select count(*) as count from calls where call_uuid=? and caller_uuid=? ", CallModel.Calluuid,CallModel.Calluuid)
 					rows.Scan(&Istrasfer)
 					fmt.Println("查看是否是转接的电话...>", Istrasfer, "UUID..>", CallModel.Calluuid)
 					if Istrasfer > 0 {
@@ -764,8 +778,19 @@ func ConnectionEsl() (config *viper.Viper) {
 							fmt.Println("修改话机接起时间..Err..>", err)
 						}
 						//通过主叫和被叫找到本次通话的原始sipuser，告诉他
-						SipUser := GetSipUser(CallModel.CallNumber, CallModel.CalledNumber)
-						InsertRedisMQForSipUser(SipUser, CallModel)
+						//SipUser := GetSipUser(CallModel.CallNumber, CallModel.CalledNumber)
+						//InsertRedisMQForSipUser(SipUser, CallModel)
+						var CCSipUser string
+						fmt.Println("运行语句..> select dest as CCSipUser from channels where cid_num=? and accountcode=? ",
+							CallModel.CallNumber,CallModel.CalledNumber)
+
+						rows = db.SqlDB.QueryRow("select dest as CCSipUser from channels where cid_num=? and accountcode=? ",
+							CallModel.CallNumber,CallModel.CalledNumber)
+
+						rows.Scan(&CCSipUser)
+
+						fmt.Println("真正通知：",CCSipUser)
+						InsertRedisMQForSipUser(CCSipUser, CallModel)
 					} else {
 						_, err := db.SqlDB.Query("update call_userstatus set CalleeRingTime=Now(),CallStatus='呼叫中',CalleeNumber=? where ChannelUUid=?", CallModel.CalledNumber, CallModel.Calluuid)
 						if err != nil {
