@@ -35,18 +35,32 @@ func InsertRedisMQForAgent(callAgent string, CallModel CallModel) {
 
 func InsertRedisMQForSipUser(SipUser string, CallModel CallModel) {
 	if SipUser != "" {
+		fmt.Println("修改数据Type..>", CallModel.Event_type)
 		switch CallModel.Event_type {
-		case "1402":
-			sql := "update call_userstatus set CalleeAnswerTime=Now(),CallStatus='通话中',ChannelUUid=?,CallerNumber=?,CalleeNumber=? where CCSipUser=?"
-			_, err := db.SqlDB.Query(sql, CallModel.Calluuid,CallModel.CallNumber,CallModel.CalledNumber,SipUser)
+		case "1401":
+			//话机振铃
+			sql := "update call_userstatus set CalleeNumber=?,CallerNumber =?,ChannelUUid=?,TPRingTime=Now(),CallStatus='话机振铃',CallType='out' where CCSipUser=?"
+			_, err := db.SqlDB.Query(sql, CallModel.CalledNumber, CallModel.CallNumber, CallModel.Calluuid, SipUser)
 			if err != nil {
-				fmt.Println("修改坐席状态..Err..>", err)
+				fmt.Println("修改话机振铃..Err..>", err)
+			}
+		case "1402":
+			sql := "update call_userstatus set TPAnswerTime=Now(),CallStatus='通话中',ChannelUUid=?,CallerNumber=?,CalleeNumber=? where CCSipUser=?"
+			_, err := db.SqlDB.Query(sql, CallModel.Calluuid, CallModel.CallNumber, CallModel.CalledNumber, SipUser)
+			if err != nil {
+				fmt.Println("修改话机接起..Err..>", err)
+			}
+		case "1404":
+			sql := "update call_userstatus set CalleeAnswerTime=Now(),CallStatus='通话中',ChannelUUid=?,CallerNumber=?,CalleeNumber=? where CCSipUser=?"
+			_, err := db.SqlDB.Query(sql, CallModel.Calluuid, CallModel.CallNumber, CallModel.CalledNumber, SipUser)
+			if err != nil {
+				fmt.Println("修改被叫接起..Err..>", err)
 			}
 		case "1405":
 			sql := "update call_userstatus set OnBreakKey = 1,OnBreakVal='话后',OnBreakTime=Now(),CallStatus='小休状态' where CCSipUser = ?"
 			_, err := db.SqlDB.Query(sql, SipUser)
 			if err != nil {
-				fmt.Println("修改坐席状态..Err..>", err)
+				fmt.Println("修改电话销毁..Err..>", err)
 			}
 		default:
 			fmt.Println("No Run SQL..>")
@@ -104,8 +118,6 @@ func GetSipUser(callNumber, calleeNumber string) (SipUser string) {
 	row.Scan(&SipUser)
 	return
 }
-
-
 
 //退出方法，清理redis缓存和db的binding数据
 func logout(AgentId []string) {
