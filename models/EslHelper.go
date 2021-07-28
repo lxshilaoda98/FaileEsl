@@ -361,6 +361,7 @@ func ConnectionEsl() (config *viper.Viper) {
 					log.Infof("未知子事件..>%s", msg)
 				}
 			case "CHANNEL_ANSWER":
+
 				otherUUid := msg.Headers["variable_bridge_uuid"]
 
 				callUUid := msg.Headers["variable_call_uuid"]
@@ -382,6 +383,8 @@ func ConnectionEsl() (config *viper.Viper) {
 
 				if msg.Headers["Other-Leg-Logical-Direction"] == "inbound" {
 					call = callNumber
+					calleeUUid := msg.Headers["Caller-Unique-ID"]
+					CallModel.Calluuid = calleeUUid
 					CallModel.Event_type = "1404"
 					CallModel.Event_mess = "被叫接听"
 					var Istrasfer int
@@ -393,7 +396,7 @@ func ConnectionEsl() (config *viper.Viper) {
 					rows = db.SqlDB.QueryRow("select CCSipUser from call_userstatus where ChannelUUid=? ", CallModel.Calluuid)
 					rows.Scan(&OtherTrasferSipUser)
 					fmt.Println("查找数据 ChannelUUid ..>", CallModel.Calluuid)
-					if OtherTrasferSipUser != "" {
+					if OtherTrasferSipUser != "" && Istrasfer > 0 {
 						fmt.Println("需要通知sip用户")
 						CallModel.Event_type = "1702"
 						CallModel.Event_mess = "转接接听"
@@ -727,10 +730,12 @@ func ConnectionEsl() (config *viper.Viper) {
 					//	fmt.Println("话机振铃异常，原因找不到坐席相关的信息！")
 					//}
 				} else if msg.Headers["variable_sofia_profile_name"] == "external" && msg.Headers["variable_direction"] == "outbound" {
+					calleeUUid := msg.Headers["Caller-Unique-ID"]
 					callerNumber := msg.Headers["Caller-Caller-ID-Number"]
 					calleeNumber := msg.Headers["Caller-Callee-ID-Number"]
 					fmt.Println("主叫：", callerNumber)
 					fmt.Println("被叫：", calleeNumber)
+					CallModel.Calluuid = calleeUUid
 					CallModel.Event_type = "1403"
 					CallModel.Event_mess = "被叫振铃"
 					CallModel.Event_time = time.Now().UnixNano() / 1e6
