@@ -360,266 +360,6 @@ func ConnectionEsl() (config *viper.Viper) {
 				default:
 					log.Infof("未知子事件..>%s", msg)
 				}
-			case "CHANNEL_ANSWER":
-
-				otherUUid := msg.Headers["variable_bridge_uuid"]
-
-				callUUid := msg.Headers["variable_call_uuid"]
-				//callAgent := msg.Headers["Caller-Callee-ID-Number"]
-				call := msg.Headers["Caller-Caller-ID-Number"]
-				callNumber := msg.Headers["Caller-Caller-ID-Number"]   // 主叫号码
-				callerNumber := msg.Headers["Caller-Callee-ID-Number"] // 被叫
-				//callerAnswerTime, _ := strconv.Atoi(msg.Headers["Caller-Channel-Answered-Time"]) //应答时间
-				CallModel := CallModel{}
-				CallModel.Calluuid = callUUid
-				CallModel.Event_time = time.Now().UnixNano() / 1e6 //int64(callerAnswerTime)
-				CallModel.CallNumber = callNumber
-				CallModel.CalledNumber = callerNumber
-				CallModel.OtherUUid = otherUUid
-
-				fmt.Println("应答..>", msg.Headers["Other-Leg-Logical-Direction"])
-				fmt.Println("主叫..>", callNumber)
-				fmt.Println("被叫..>", callerNumber)
-
-				if msg.Headers["Other-Leg-Logical-Direction"] == "inbound" {
-					call = callNumber
-					calleeUUid := msg.Headers["Caller-Unique-ID"]
-					CallModel.Calluuid = calleeUUid
-					CallModel.Event_type = "1404"
-					CallModel.Event_mess = "被叫接听"
-					var Istrasfer int
-
-					rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=? and CallStatus='转接振铃中'", CallModel.Calluuid)
-					rows.Scan(&Istrasfer)
-					//多次转接记录通知人信息
-					var OtherTrasferSipUser string
-					rows = db.SqlDB.QueryRow("select CCSipUser from call_userstatus where ChannelUUid=? ", CallModel.Calluuid)
-					rows.Scan(&OtherTrasferSipUser)
-					fmt.Println("查找数据 ChannelUUid ..>", CallModel.Calluuid)
-					if OtherTrasferSipUser != "" && Istrasfer > 0 {
-						fmt.Println("需要通知sip用户")
-						CallModel.Event_type = "1702"
-						CallModel.Event_mess = "转接接听"
-						_, err := db.SqlDB.Query("update call_userstatus set OtherChannelUUid=?,OtherChannelAnswerTime=Now(),CallStatus='转接通话中' where ChannelUUid=?", otherUUid, callUUid)
-						if err != nil {
-							fmt.Println("修改被叫接听时间..Err..>", err)
-						}
-						InsertRedisMQForSipUser(OtherTrasferSipUser, CallModel)
-						//如果是拨打的内线分机，就去查找一下是否有对应的人，通知他！
-						if len(callerNumber) == 4 {
-							fmt.Println("被叫等于4位，添加话机接起事件！")
-							CallModel.Event_type = "1402"
-							CallModel.Event_mess = "话机接起"
-							InsertRedisMQForSipUser(callerNumber, CallModel)
-						}
-					}
-					if Istrasfer > 0 {
-						CallModel.Event_type = "1702"
-						CallModel.Event_mess = "转接接听"
-						_, err := db.SqlDB.Query("update call_userstatus set OtherChannelUUid=?,OtherChannelAnswerTime=Now(),CallStatus='转接通话中' where ChannelUUid=?", otherUUid, callUUid)
-						if err != nil {
-							fmt.Println("修改被叫接听时间..Err..>", err)
-						}
-						InsertRedisMQForSipUser(call, CallModel)
-						//如果是拨打的内线分机，就去查找一下是否有对应的人，通知他！
-						if len(callerNumber) == 4 {
-							fmt.Println("被叫等于4位，添加话机接起事件！")
-							CallModel.Event_type = "1402"
-							CallModel.Event_mess = "话机接起"
-							InsertRedisMQForSipUser(callerNumber, CallModel)
-						}
-
-					} else {
-						_, err := db.SqlDB.Query("update call_userstatus set CalleeAnswerTime=Now(),CallStatus='通话中' where ChannelUUid=?", callUUid)
-						if err != nil {
-							fmt.Println("修改被叫接听时间..Err..>", err)
-						}
-						InsertRedisMQForSipUser(call, CallModel)
-
-						if len(callerNumber) == 4 {
-							fmt.Println("被叫等于4位，添加话机接起事件！")
-							CallModel.Event_type = "1402"
-							CallModel.Event_mess = "话机接起"
-							InsertRedisMQForSipUser(callerNumber, CallModel)
-						}
-					}
-
-				} else {
-					call = callerNumber
-					CallModel.Event_type = "1402"
-					CallModel.Event_mess = "话机接起"
-					_, err := db.SqlDB.Query("update call_userstatus set TPAnswerTime=Now() where ChannelUUid=?", callUUid)
-					if err != nil {
-						fmt.Println("修改话机接起时间..Err..>", err)
-					}
-					InsertRedisMQForSipUser(call, CallModel)
-				}
-				//if msg.Headers["Call-Direction"] == "outbound" && msg.Headers["Caller-ANI"] == "0000000000" && msg.Headers["Answer-State"] == "answered" {
-				//
-				//	call=callerNumber
-				//}
-
-			case "CHANNEL_DESTROY":
-				//fmt.Println("销毁电话..>",msg)
-				ha := helper.HaHangupV{}
-				CallModel := CallModel{}
-				eventType := "1405"
-				eventMsg := "电话销毁"
-				otherUUid := msg.Headers["variable_bridge_uuid"]
-				callUUid := msg.Headers["Channel-Call-UUID"]
-				callType := msg.Headers["Caller-Logical-Direction"]
-				//callAgent := SipSelectAgent(msg.Headers["Caller-Callee-ID-Number"])
-				call := msg.Headers["Caller-Callee-ID-Number"]
-				callNumber := msg.Headers["Caller-Caller-ID-Number"]   // 主叫号码
-				callerNumber := msg.Headers["Caller-Callee-ID-Number"] // 被叫
-				callerHangupTime := time.Now().UnixNano() / 1e6        //拒绝时间
-
-				CallModel.Calluuid = msg.Headers["Channel-Call-UUID"]
-				CallModel.Event_type = eventType
-				CallModel.Event_mess = eventMsg
-				CallModel.Event_time = callerHangupTime
-				CallModel.CallNumber = callNumber
-				CallModel.CalledNumber = callerNumber
-				CallModel.CallHangupCause = ha.HaHangupCauseCause
-				CallModel.OtherUUid = otherUUid
-
-				fmt.Println("主叫销毁电话..>", callNumber)
-				fmt.Println("被叫销毁电话..>", callerNumber)
-				fmt.Println("销毁电话方向..>", callType)
-				fmt.Println("销毁Calluuid..>", callUUid)
-				fmt.Println("销毁orherUUid..>", otherUUid)
-
-				var Istrasfer int
-				var IstrasferZL int
-				//查询是否是转接通话中
-				rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=? and CallStatus='转接通话中' ", callUUid)
-				rows.Scan(&Istrasfer)
-
-				rows = db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=? and CallStatus='转接振铃中' ", otherUUid)
-				rows.Scan(&IstrasferZL)
-
-				fmt.Println("查询是否是转接通话中电话销毁..>", Istrasfer)
-				fmt.Println("查询是否是转接振铃中电话销毁..>", IstrasferZL)
-
-				ha = helper.ErrConvertCN(msg.Headers["Hangup-Cause"])
-				if callType == "inbound" {
-					if msg.Headers["Caller-Destination-Number"] == "voicemail" {
-						fmt.Println("电话销毁，进入了留言!!")
-						CallModel.Event_type = "1601"
-						CallModel.Event_mess = "接入语音信箱"
-						//callAgent = msg.Headers["Caller-Caller-ID-Number"]
-						call = msg.Headers["Caller-Caller-ID-Number"]
-						CallModel.CallNumber = msg.Headers["Caller-Callee-ID-Number"]
-						CallModel.CalledNumber = msg.Headers["Caller-Caller-ID-Number"]
-
-					} else {
-						//callAgent = SipSelectAgent(msg.Headers["Caller-Caller-ID-Number"])
-						if msg.Headers["variable_sofia_profile_name"] == "internal" {
-							CallModel.Event_type = "1405"
-							CallModel.Event_mess = "电话销毁"
-							//callAgent = SipSelectAgent(callNumber)
-							call = callerNumber
-						} else {
-							call = callNumber
-						}
-					}
-
-				} else {
-					//通知坐席，话机挂断
-					//eventMsg = "电话销毁"
-					if msg.Headers["variable_sofia_profile_name"] == "internal" {
-						CallModel.Event_type = "1405"
-						CallModel.Event_mess = "电话销毁"
-						if callNumber == "0000000000" {
-							//话机未摘机
-							//callAgent = SipSelectAgent(callerNumber)
-							call = callerNumber
-						} else {
-							//callAgent = SipSelectAgent(callNumber)
-							call = callNumber
-						}
-					}
-				}
-				fmt.Println("call：" + call)
-				if call == callerNumber {
-					fmt.Println("被叫挂机..>")
-					if callNumber == "0000000000" {
-						//证明是话机振铃没有应答..
-						eventType = "1405"
-						eventMsg = "电话销毁"
-						InsertRedisMQForSipUser(callerNumber, CallModel)
-					}
-					if callerNumber != "0000000000" {
-						//如果被叫不是0000默认号码的话，就去尝试通知主叫，否则通知被叫
-						eventType = "1405"
-						eventMsg = "电话销毁"
-						InsertRedisMQForSipUser(callNumber, CallModel)
-					} else {
-						eventType = "1405"
-						eventMsg = "电话销毁"
-						InsertRedisMQForSipUser(callerNumber, CallModel)
-					}
-				} else if call == callNumber {
-
-					fmt.Println("主叫挂机..>")
-					if callerNumber != "0000000000" {
-						//如果被叫不是0000默认号码的话，就去尝试通知主叫，否则通知被叫
-						eventType = "1405"
-						eventMsg = "电话销毁"
-						InsertRedisMQForSipUser(callNumber, CallModel)
-
-						if len(callerNumber) == 4 && Istrasfer <= 0 {
-							var Numbers int8
-							rows := db.SqlDB.QueryRow("select count(*) as count from calls where callee_uuid = ? or call_uuid =?", otherUUid, otherUUid)
-							rows.Scan(&Numbers)
-							fmt.Println("查询是否本次挂断电话是否还在通话..", Numbers)
-							if Numbers <= 0 {
-								fmt.Println("没有找到通话数据，允许挂断..")
-								CallModel.Event_type = "1405"
-								CallModel.Event_mess = "电话销毁"
-								InsertRedisMQForSipUser(callerNumber, CallModel)
-							} else {
-								fmt.Println("还有通话，不挂断!")
-							}
-						}
-					} else {
-						eventType = "1405"
-						eventMsg = "电话销毁"
-						InsertRedisMQForSipUser(callerNumber, CallModel)
-					}
-				}
-
-				if Istrasfer > 0 {
-					CallModel.Event_type = "1703"
-					CallModel.Event_mess = "转接销毁"
-					_, err := db.SqlDB.Query("update call_userstatus set OtherChannelHanguTime=Now(),OnBreakKey = 1,OnBreakVal='话后',CallStatus='小休状态',OnBreakTime=Now() where ChannelUUid=? ", CallModel.Calluuid)
-					if err != nil {
-						fmt.Println("修改坐席转接销毁通话中异常..>Err.>", err)
-					}
-					InsertRedisMQForSipUser(callNumber, CallModel)
-				} else if IstrasferZL > 0 {
-					CallModel.Event_type = "1704"
-					CallModel.Event_mess = "转接取消"
-					_, err := db.SqlDB.Query("update call_userstatus set CallStatus='通话中' where ChannelUUid=? ", otherUUid)
-					if err != nil {
-						fmt.Println("修改坐席转接销毁通话中异常..>Err.>", err)
-					}
-					InsertRedisMQForSipUser(callNumber, CallModel)
-				} else {
-					fmt.Println("没有查询到时转接销毁的事件!")
-					//新增一个内线分机销毁事件
-					//if len(callerNumber) == 4 {
-					//	CallModel.Event_type = "1405"
-					//	CallModel.Event_mess = "电话销毁"
-					//	InsertRedisMQForSipUser(callerNumber, CallModel)
-					//}
-					_, err := db.SqlDB.Query("update call_userstatus set OtherChannelHanguTime=Now(),OnBreakKey = 1,OnBreakVal='话后',CallStatus='小休状态',OnBreakTime=Now() where ChannelUUid=? ", CallModel.Calluuid)
-					if err != nil {
-						fmt.Println("修改坐席转接销毁通话中异常..>Err.>", err)
-					}
-					//InsertRedisMQForSipUser(call, CallModel)
-				}
-
 			case "CHANNEL_CREATE":
 				CallModel := CallModel{}
 				CallModel.Calluuid = msg.Headers["Channel-Call-UUID"]
@@ -837,9 +577,266 @@ func ConnectionEsl() (config *viper.Viper) {
 				} else {
 					fmt.Println("未匹配到事件！")
 				}
+			case "CHANNEL_ANSWER":
+
+				otherUUid := msg.Headers["variable_bridge_uuid"]
+
+				callUUid := msg.Headers["variable_call_uuid"]
+				//callAgent := msg.Headers["Caller-Callee-ID-Number"]
+				call := msg.Headers["Caller-Caller-ID-Number"]
+				callNumber := msg.Headers["Caller-Caller-ID-Number"]   // 主叫号码
+				callerNumber := msg.Headers["Caller-Callee-ID-Number"] // 被叫
+				//callerAnswerTime, _ := strconv.Atoi(msg.Headers["Caller-Channel-Answered-Time"]) //应答时间
+				CallModel := CallModel{}
+				CallModel.Calluuid = callUUid
+				CallModel.Event_time = time.Now().UnixNano() / 1e6 //int64(callerAnswerTime)
+				CallModel.CallNumber = callNumber
+				CallModel.CalledNumber = callerNumber
+				CallModel.OtherUUid = otherUUid
+
+				fmt.Println("应答..>", msg.Headers["Other-Leg-Logical-Direction"])
+				fmt.Println("主叫..>", callNumber)
+				fmt.Println("被叫..>", callerNumber)
+
+				if msg.Headers["Other-Leg-Logical-Direction"] == "inbound" {
+					call = callNumber
+					calleeUUid := msg.Headers["Caller-Unique-ID"]
+					CallModel.Calluuid = calleeUUid
+					CallModel.Event_type = "1404"
+					CallModel.Event_mess = "被叫接听"
+					var Istrasfer int
+
+					rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=? and CallStatus='转接振铃中'", CallModel.Calluuid)
+					rows.Scan(&Istrasfer)
+					//多次转接记录通知人信息
+					var OtherTrasferSipUser string
+					rows = db.SqlDB.QueryRow("select CCSipUser from call_userstatus where ChannelUUid=? ", CallModel.Calluuid)
+					rows.Scan(&OtherTrasferSipUser)
+					fmt.Println("查找数据 ChannelUUid ..>", CallModel.Calluuid)
+					if OtherTrasferSipUser != "" && Istrasfer > 0 {
+						fmt.Println("需要通知sip用户")
+						CallModel.Event_type = "1702"
+						CallModel.Event_mess = "转接接听"
+						_, err := db.SqlDB.Query("update call_userstatus set OtherChannelUUid=?,OtherChannelAnswerTime=Now(),CallStatus='转接通话中' where ChannelUUid=?", otherUUid, callUUid)
+						if err != nil {
+							fmt.Println("修改被叫接听时间..Err..>", err)
+						}
+						InsertRedisMQForSipUser(OtherTrasferSipUser, CallModel)
+						//如果是拨打的内线分机，就去查找一下是否有对应的人，通知他！
+						if len(callerNumber) == 4 {
+							fmt.Println("被叫等于4位，添加话机接起事件！")
+							CallModel.Event_type = "1402"
+							CallModel.Event_mess = "话机接起"
+							InsertRedisMQForSipUser(callerNumber, CallModel)
+						}
+					}
+					if Istrasfer > 0 {
+						CallModel.Event_type = "1702"
+						CallModel.Event_mess = "转接接听"
+						_, err := db.SqlDB.Query("update call_userstatus set OtherChannelUUid=?,OtherChannelAnswerTime=Now(),CallStatus='转接通话中' where ChannelUUid=?", otherUUid, callUUid)
+						if err != nil {
+							fmt.Println("修改被叫接听时间..Err..>", err)
+						}
+						InsertRedisMQForSipUser(call, CallModel)
+						//如果是拨打的内线分机，就去查找一下是否有对应的人，通知他！
+						if len(callerNumber) == 4 {
+							fmt.Println("被叫等于4位，添加话机接起事件！")
+							CallModel.Event_type = "1402"
+							CallModel.Event_mess = "话机接起"
+							InsertRedisMQForSipUser(callerNumber, CallModel)
+						}
+
+					} else {
+						_, err := db.SqlDB.Query("update call_userstatus set CalleeAnswerTime=Now(),CallStatus='通话中' where ChannelUUid=?", callUUid)
+						if err != nil {
+							fmt.Println("修改被叫接听时间..Err..>", err)
+						}
+						InsertRedisMQForSipUser(call, CallModel)
+
+						if len(callerNumber) == 4 {
+							fmt.Println("被叫等于4位，添加话机接起事件！")
+							CallModel.Event_type = "1402"
+							CallModel.Event_mess = "话机接起"
+							InsertRedisMQForSipUser(callerNumber, CallModel)
+						}
+					}
+
+				} else {
+					call = callerNumber
+					CallModel.Event_type = "1402"
+					CallModel.Event_mess = "话机接起"
+					_, err := db.SqlDB.Query("update call_userstatus set TPAnswerTime=Now() where ChannelUUid=?", callUUid)
+					if err != nil {
+						fmt.Println("修改话机接起时间..Err..>", err)
+					}
+					InsertRedisMQForSipUser(call, CallModel)
+				}
+				//if msg.Headers["Call-Direction"] == "outbound" && msg.Headers["Caller-ANI"] == "0000000000" && msg.Headers["Answer-State"] == "answered" {
+				//
+				//	call=callerNumber
+				//}
+			case "CHANNEL_DESTROY":
+				//fmt.Println("销毁电话..>",msg)
+				ha := helper.HaHangupV{}
+				CallModel := CallModel{}
+				eventType := "1405"
+				eventMsg := "电话销毁"
+				otherUUid := msg.Headers["variable_bridge_uuid"]
+				callUUid := msg.Headers["Channel-Call-UUID"]
+				callType := msg.Headers["Caller-Logical-Direction"]
+				//callAgent := SipSelectAgent(msg.Headers["Caller-Callee-ID-Number"])
+				call := msg.Headers["Caller-Callee-ID-Number"]
+				callNumber := msg.Headers["Caller-Caller-ID-Number"]   // 主叫号码
+				callerNumber := msg.Headers["Caller-Callee-ID-Number"] // 被叫
+				callerHangupTime := time.Now().UnixNano() / 1e6        //拒绝时间
+
+				CallModel.Calluuid = msg.Headers["Channel-Call-UUID"]
+				CallModel.Event_type = eventType
+				CallModel.Event_mess = eventMsg
+				CallModel.Event_time = callerHangupTime
+				CallModel.CallNumber = callNumber
+				CallModel.CalledNumber = callerNumber
+				CallModel.CallHangupCause = ha.HaHangupCauseCause
+				CallModel.OtherUUid = otherUUid
+
+				fmt.Println("主叫销毁电话..>", callNumber)
+				fmt.Println("被叫销毁电话..>", callerNumber)
+				fmt.Println("销毁电话方向..>", callType)
+				fmt.Println("销毁Calluuid..>", callUUid)
+				fmt.Println("销毁orherUUid..>", otherUUid)
+
+				var Istrasfer int
+				var IstrasferZL int
+				//查询是否是转接通话中
+				rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=? and CallStatus='转接通话中' ", callUUid)
+				rows.Scan(&Istrasfer)
+
+				rows = db.SqlDB.QueryRow("select count(*) as count from call_userstatus where ChannelUUid=? and CallStatus='转接振铃中' ", otherUUid)
+				rows.Scan(&IstrasferZL)
+
+				fmt.Println("查询是否是转接通话中电话销毁..>", Istrasfer)
+				fmt.Println("查询是否是转接振铃中电话销毁..>", IstrasferZL)
+
+				ha = helper.ErrConvertCN(msg.Headers["Hangup-Cause"])
+				if callType == "inbound" {
+					if msg.Headers["Caller-Destination-Number"] == "voicemail" {
+						fmt.Println("电话销毁，进入了留言!!")
+						CallModel.Event_type = "1601"
+						CallModel.Event_mess = "接入语音信箱"
+						//callAgent = msg.Headers["Caller-Caller-ID-Number"]
+						call = msg.Headers["Caller-Caller-ID-Number"]
+						CallModel.CallNumber = msg.Headers["Caller-Callee-ID-Number"]
+						CallModel.CalledNumber = msg.Headers["Caller-Caller-ID-Number"]
+
+					} else {
+						//callAgent = SipSelectAgent(msg.Headers["Caller-Caller-ID-Number"])
+						if msg.Headers["variable_sofia_profile_name"] == "internal" {
+							CallModel.Event_type = "1405"
+							CallModel.Event_mess = "电话销毁"
+							//callAgent = SipSelectAgent(callNumber)
+							call = callerNumber
+						} else {
+							call = callNumber
+						}
+					}
+
+				} else {
+					//通知坐席，话机挂断
+					//eventMsg = "电话销毁"
+					if msg.Headers["variable_sofia_profile_name"] == "internal" {
+						CallModel.Event_type = "1405"
+						CallModel.Event_mess = "电话销毁"
+						if callNumber == "0000000000" {
+							//话机未摘机
+							//callAgent = SipSelectAgent(callerNumber)
+							call = callerNumber
+						} else {
+							//callAgent = SipSelectAgent(callNumber)
+							call = callNumber
+						}
+					}
+				}
+				fmt.Println("call：" + call)
+				if call == callerNumber {
+					fmt.Println("被叫挂机..>")
+					if callNumber == "0000000000" {
+						//证明是话机振铃没有应答..
+						eventType = "1405"
+						eventMsg = "电话销毁"
+						InsertRedisMQForSipUser(callerNumber, CallModel)
+					}
+					if callerNumber != "0000000000" {
+						//如果被叫不是0000默认号码的话，就去尝试通知主叫，否则通知被叫
+						eventType = "1405"
+						eventMsg = "电话销毁"
+						InsertRedisMQForSipUser(callNumber, CallModel)
+					} else {
+						eventType = "1405"
+						eventMsg = "电话销毁"
+						InsertRedisMQForSipUser(callerNumber, CallModel)
+					}
+				} else if call == callNumber {
+
+					fmt.Println("主叫挂机..>")
+					if callerNumber != "0000000000" {
+						//如果被叫不是0000默认号码的话，就去尝试通知主叫，否则通知被叫
+						eventType = "1405"
+						eventMsg = "电话销毁"
+						InsertRedisMQForSipUser(callNumber, CallModel)
+
+						if len(callerNumber) == 4 && Istrasfer <= 0 {
+							var Numbers int8
+							rows := db.SqlDB.QueryRow("select count(*) as count from calls where callee_uuid = ? or call_uuid =?", otherUUid, otherUUid)
+							rows.Scan(&Numbers)
+							fmt.Println("查询是否本次挂断电话是否还在通话..", Numbers)
+							if Numbers <= 0 {
+								fmt.Println("没有找到通话数据，允许挂断..")
+								CallModel.Event_type = "1405"
+								CallModel.Event_mess = "电话销毁"
+								InsertRedisMQForSipUser(callerNumber, CallModel)
+							} else {
+								fmt.Println("还有通话，不挂断!")
+							}
+						}
+					} else {
+						eventType = "1405"
+						eventMsg = "电话销毁"
+						InsertRedisMQForSipUser(callerNumber, CallModel)
+					}
+				}
+
+				if Istrasfer > 0 {
+					CallModel.Event_type = "1703"
+					CallModel.Event_mess = "转接销毁"
+					_, err := db.SqlDB.Query("update call_userstatus set OtherChannelHanguTime=Now(),OnBreakKey = 1,OnBreakVal='话后',CallStatus='小休状态',OnBreakTime=Now() where ChannelUUid=? ", CallModel.Calluuid)
+					if err != nil {
+						fmt.Println("修改坐席转接销毁通话中异常..>Err.>", err)
+					}
+					InsertRedisMQForSipUser(callNumber, CallModel)
+				} else if IstrasferZL > 0 {
+					CallModel.Event_type = "1704"
+					CallModel.Event_mess = "转接取消"
+					_, err := db.SqlDB.Query("update call_userstatus set CallStatus='通话中' where ChannelUUid=? ", otherUUid)
+					if err != nil {
+						fmt.Println("修改坐席转接销毁通话中异常..>Err.>", err)
+					}
+					InsertRedisMQForSipUser(callNumber, CallModel)
+				} else {
+					fmt.Println("没有查询到时转接销毁的事件!")
+					//新增一个内线分机销毁事件
+					//if len(callerNumber) == 4 {
+					//	CallModel.Event_type = "1405"
+					//	CallModel.Event_mess = "电话销毁"
+					//	InsertRedisMQForSipUser(callerNumber, CallModel)
+					//}
+					_, err := db.SqlDB.Query("update call_userstatus set OtherChannelHanguTime=Now(),OnBreakKey = 1,OnBreakVal='话后',CallStatus='小休状态',OnBreakTime=Now() where ChannelUUid=? ", CallModel.Calluuid)
+					if err != nil {
+						fmt.Println("修改坐席转接销毁通话中异常..>Err.>", err)
+					}
+					//InsertRedisMQForSipUser(call, CallModel)
+				}
 			case "CHANNEL_HOLD":
 				callUUid := msg.Headers["Channel-Call-UUID"]
-				token := SipSelectTokenForCUUid(callUUid)
 				CallModel := CallModel{}
 				CallModel.Calluuid = callUUid
 				CallModel.Event_type = "1406"
@@ -847,14 +844,14 @@ func ConnectionEsl() (config *viper.Viper) {
 				CallModel.Event_time = time.Now().UnixNano() / 1e6
 				CallModel.CallNumber = msg.Headers["Caller-Caller-ID-Number"]
 				CallModel.CalledNumber = msg.Headers["Caller-Callee-ID-Number"]
-				InsertRedisMQForToken(token, CallModel)
+				InsertRedisMQForSipUser(CallModel.CallNumber, CallModel)
+				InsertRedisMQForSipUser(CallModel.CalledNumber, CallModel)
 				_, err := db.SqlDB.Query("update call_userstatus set CallStatus='保持中',HoldTime=Now() where ChannelUUid=?", callUUid)
 				if err != nil {
 					fmt.Println("修改状态为保持..Err..>", err)
 				}
 			case "CHANNEL_UNHOLD":
 				callUUid := msg.Headers["Channel-Call-UUID"]
-				token := SipSelectTokenForCUUid(callUUid)
 				CallModel := CallModel{}
 				CallModel.Calluuid = callUUid
 				CallModel.Event_type = "1407"
@@ -862,7 +859,8 @@ func ConnectionEsl() (config *viper.Viper) {
 				CallModel.Event_time = time.Now().UnixNano() / 1e6
 				CallModel.CallNumber = msg.Headers["Caller-Caller-ID-Number"]
 				CallModel.CalledNumber = msg.Headers["Caller-Callee-ID-Number"]
-				InsertRedisMQForToken(token, CallModel)
+				InsertRedisMQForSipUser(CallModel.CallNumber, CallModel)
+				InsertRedisMQForSipUser(CallModel.CalledNumber, CallModel)
 				_, err := db.SqlDB.Query("update call_userstatus set CallStatus='通话中' where ChannelUUid=?", callUUid)
 				if err != nil {
 					fmt.Println("修改状态为保持..Err..>", err)
