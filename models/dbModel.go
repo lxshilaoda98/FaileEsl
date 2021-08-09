@@ -62,6 +62,30 @@ func InsertRedisMQForSipUser(SipUser string, CallModel CallModel) {
 			if err != nil {
 				fmt.Println("修改电话销毁..Err..>", err)
 			}
+		case "1701":
+			sql := "update call_userstatus set CallStatus='转接中' where CCSipUser=?"
+			_, err := db.SqlDB.Query(sql, SipUser)
+			if err != nil {
+				fmt.Println("修改话机转接中..Err..>", err)
+			}
+		case "1702":
+			sql := "update call_userstatus set CallStatus='转接通话中' where CCSipUser=?"
+			_, err := db.SqlDB.Query(sql, SipUser)
+			if err != nil {
+				fmt.Println("修改话机转接通话中..Err..>", err)
+			}
+		case "1703":
+			sql := "update call_userstatus set CallStatus='话后状态' where CCSipUser=?"
+			_, err := db.SqlDB.Query(sql, SipUser)
+			if err != nil {
+				fmt.Println("修改话机转接销毁..Err..>", err)
+			}
+		case "1704":
+			sql := "update call_userstatus set CallStatus='话后状态' where CCSipUser=?"
+			_, err := db.SqlDB.Query(sql, SipUser)
+			if err != nil {
+				fmt.Println("修改话机转接取消..Err..>", err)
+			}
 		default:
 			fmt.Println("No Run SQL..>")
 		}

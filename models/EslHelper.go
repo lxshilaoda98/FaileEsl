@@ -667,9 +667,9 @@ func ConnectionEsl() (config *viper.Viper) {
 						callerANI = msg.Headers["Caller-Caller-ID-Number"]
 					}
 					var Istrasfer = 0
-					rows := db.SqlDB.QueryRow("select count(*) as count from calls where call_uuid=? ", channelCallUUID)
+					rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where CCSipUser=? and CallStatus='转接中' ", callerANI)
 					rows.Scan(&Istrasfer)
-					fmt.Println("是否存在通话：", Istrasfer)
+					fmt.Println("是否存在转接通话：", Istrasfer)
 					if Istrasfer > 0 {
 						CallModel.Event_type = "1702"
 						CallModel.Event_mess = "转接接听"
@@ -809,7 +809,7 @@ func ConnectionEsl() (config *viper.Viper) {
 						callNumber = msg.Headers["Caller-Caller-ID-Number"]
 					}
 					var Istrasfer = 0
-					rows := db.SqlDB.QueryRow("select count(*) as count from calls where call_uuid=? ", callUUid)
+					rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where CCSipUser=? and CallStatus='转接通话中' ", callNumber)
 					rows.Scan(&Istrasfer)
 					fmt.Println("是否存在通话：", Istrasfer)
 					if Istrasfer > 0 {
