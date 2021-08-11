@@ -402,9 +402,10 @@ func ConnectionEsl() (config *viper.Viper) {
 					if callerANI == "0000000000" {
 						callerANI = msg.Headers["Caller-Caller-ID-Number"]
 					}
+					fmt.Println("真实主叫:", callerANI)
 					fmt.Println("查找是否已经存在的通话，如果存在，就证明可能是转接的电话")
 					var ttCall TransferCall
-					rows := db.SqlDB.QueryRow("select CCSipUser,CallType from call_userstatus where CallerNumber=?  ", callerANI)
+					rows := db.SqlDB.QueryRow("select CCSipUser,CallType from call_userstatus where CallerNumber=? and callStatus='转接操作中' ", callerANI)
 					rows.Scan(&ttCall.CCSipUser, &ttCall.CallType)
 					fmt.Println("是否存在通话：", ttCall)
 					CallModel.Calluuid = channelCallUUID
@@ -517,6 +518,7 @@ func ConnectionEsl() (config *viper.Viper) {
 					if callNumber == "0000000000" {
 						callNumber = msg.Headers["Caller-Caller-ID-Number"]
 					}
+					fmt.Println("真实主叫:", callNumber)
 					var Istrasfer = 0
 					rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where CCSipUser=? and CallStatus='转接通话中' ", callNumber)
 					rows.Scan(&Istrasfer)
