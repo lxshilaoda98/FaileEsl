@@ -47,6 +47,14 @@ type CallModel struct {
 	IsTransfer      string `json:"is_transfer"`
 }
 
+type TransferCall struct {
+	Istrasfer    int
+	CCSipUser    string
+	CallerNumber string
+	CalleeNumber string
+	CallType     string
+}
+
 //连接到FS，并监听数据
 func ConnectionEsl() (config *viper.Viper) {
 
@@ -209,8 +217,8 @@ func ConnectionEsl() (config *viper.Viper) {
 						CallModel.Event_time = time.Now().UnixNano() / 1e6
 						CallModel.CallNumber = callAni
 						CallModel.CalledNumber = callAgent
-						Contact := AgentSelectContact(callAgent)
-						InsertRedisMQForAgent(Contact, CallModel)
+
+						InsertRedisMQForAgent(callAgent, CallModel)
 						_, err := db.SqlDB.Query("update call_userstatus set CallType='in',CallerNumber=?,CalleeNumber=?,ChannelUUid=?,CallStatus='呼入响铃',CallRingTime=Now() where CCAgent=?",
 							callAni, callAgent, callSessionUUid, callAgent)
 						if err != nil {
@@ -218,7 +226,7 @@ func ConnectionEsl() (config *viper.Viper) {
 						}
 					case "bridge-agent-start":
 						CCAgent := msg.Headers["CC-Agent"]
-						_, err := db.SqlDB.Query("update call_userstatus set CallStatus='呼入应答',CallAnswerTime=Now() where CCAgent=?", CCAgent)
+						_, err := db.SqlDB.Query("update call_userstatus set CallStatus='呼入应答',CallType='in',CallAnswerTime=Now() where CCAgent=?", CCAgent)
 						if err != nil {
 							fmt.Println("呼入应答..Err..>", err)
 						}
@@ -666,24 +674,27 @@ func ConnectionEsl() (config *viper.Viper) {
 					if callerANI == "0000000000" {
 						callerANI = msg.Headers["Caller-Caller-ID-Number"]
 					}
-					var Istrasfer = 0
-					rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where CCSipUser=? and CallStatus='转接中' ", callerANI)
-					rows.Scan(&Istrasfer)
-					fmt.Println("是否存在转接通话：", Istrasfer)
-					if Istrasfer > 0 {
-						CallModel.Event_type = "1702"
-						CallModel.Event_mess = "转接接听"
-						fmt.Println("通知", callerANI, "..>1702 转接接听")
-					} else {
-						CallModel.Event_type = "1404"
-						CallModel.Event_mess = "被叫接听"
-						fmt.Println("通知", callerANI, "..>1404 被叫接听")
-					}
+
 					CallModel.Calluuid = callUUid
 					CallModel.Event_time = time.Now().UnixNano()
 					CallModel.CallNumber = callNumber
 					CallModel.CalledNumber = callerNumber
-					InsertRedisMQForSipUser(callerANI, CallModel)
+
+					var ttCall TransferCall
+					rows := db.SqlDB.QueryRow("select CCSipUser,CallType from call_userstatus where CCSipUser=? and CallStatus='转接中' ", callerANI)
+					rows.Scan(&ttCall.CCSipUser, &ttCall.CallType)
+					fmt.Println("是否存在转接通话：", ttCall)
+					if ttCall.CallType != "" {
+						CallModel.Event_type = "1702"
+						CallModel.Event_mess = "转接接听"
+						fmt.Println("通知", ttCall.CCSipUser, "..>1702 转接接听")
+						InsertRedisMQForSipUser(ttCall.CCSipUser, CallModel)
+					} else {
+						CallModel.Event_type = "1404"
+						CallModel.Event_mess = "被叫接听"
+						fmt.Println("通知", callerANI, "..>1404 被叫接听")
+						InsertRedisMQForSipUser(callerANI, CallModel)
+					}
 
 					CallModel.Calluuid = callUUid
 					CallModel.Event_time = time.Now().UnixNano()
