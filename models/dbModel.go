@@ -109,7 +109,7 @@ func InsertRedisMQForSipUser(SipUser string, CallModel CallModel) {
 			db.ClientRedis.Expire("call_event_msg_list_"+Token, time.Hour*2)
 		}
 	} else {
-		fmt.Println("token 为空，将不存入队列")
+		fmt.Println("找不到登录的信息! token 为空，将不存入队列!")
 	}
 
 }
