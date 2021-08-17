@@ -2,6 +2,8 @@ package models
 
 import (
 	"fmt"
+
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -55,9 +57,28 @@ type TransferCall struct {
 	CallType     string
 }
 
+var SocketConn = make(map[string]net.Conn)
+
+func handle(conn net.Conn) {
+	defer conn.Close()
+	// 针对当前连接做发送和接受操作
+	for {
+		var buf [128]byte
+		n, err := conn.Read(buf[:])
+		if err != nil {
+			fmt.Printf("read from conn failed, err:%v\n", err)
+			break
+		}
+		recv := string(buf[:n])
+		SocketConn[recv] = conn
+		fmt.Println("[socket传输]socket:", recv, "..>存入map集合成功！conn..>", conn)
+		conn.Write([]byte("OK"))
+	}
+}
+
 //连接到FS，并监听数据
 func ConnectionEsl() (config *viper.Viper) {
-
+	go CreateSocketServer() //新建一个socket服务端
 	outFile, err := os.OpenFile("log.txt", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
 		log.Fatal(err.Error())
@@ -544,7 +565,6 @@ func ConnectionEsl() (config *viper.Viper) {
 				CallModel.Calluuid = callUUid
 				fmt.Println("通知", mqNumber, "..>1405 电话销毁")
 				InsertRedisMQForSipUser(mqNumber, CallModel)
-
 			case "CHANNEL_HOLD":
 				callUUid := msg.Headers["Channel-Call-UUID"]
 				CallModel := CallModel{}
@@ -581,6 +601,23 @@ func ConnectionEsl() (config *viper.Viper) {
 		}
 	}
 	return
+}
+
+func CreateSocketServer() {
+	fmt.Println("新建socket server!")
+	tcpServer, _ := net.ResolveTCPAddr("tcp4", ":4466")
+	listener, _ := net.ListenTCP("tcp", tcpServer)
+	for {
+		//当有新的客户端请求来的时候，拿到与客户端的连接
+		conn, err := listener.Accept()
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+		fmt.Println("收到socket 连接!")
+		//处理逻辑
+		go handle(conn)
+	}
 }
 
 func ConnFs(config *viper.Viper) (client *Client, err error) {

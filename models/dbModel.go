@@ -34,6 +34,7 @@ func InsertRedisMQForAgent(callAgent string, CallModel CallModel) {
 }
 
 func InsertRedisMQForSipUser(SipUser string, CallModel CallModel) {
+
 	if SipUser != "" {
 		fmt.Println("修改数据Type..>", CallModel.Event_type)
 		switch CallModel.Event_type {
@@ -100,6 +101,15 @@ func InsertRedisMQForSipUser(SipUser string, CallModel CallModel) {
 	rows := db.SqlDB.QueryRow("select Token from call_userstatus where CCSipUser = ?", SipUser)
 	rows.Scan(&Token)
 	fmt.Println(SipUser, " -> SIP 添加消息队列：", MQStr, ".>token.>", Token)
+
+	capital, ok := SocketConn[Token]
+	if ok {
+		fmt.Println("[socket传输]..>找到数据,进行传输通讯..>")
+		capital.Write([]byte(MQStr))
+	} else {
+		fmt.Println("[socket传输]..>未找到要传输的socket..忽略")
+	}
+
 	if Token != "" {
 		res, err := db.ClientRedis.RPush("call_event_msg_list_"+Token, MQStr).Result()
 		if err != nil {
@@ -115,6 +125,7 @@ func InsertRedisMQForSipUser(SipUser string, CallModel CallModel) {
 }
 
 func InsertRedisMQForToken(token string, CallModel CallModel) {
+
 	fmt.Println("MQ..>token.>", token)
 	insRedisByte, err := json.Marshal(CallModel)
 	if err != nil {
