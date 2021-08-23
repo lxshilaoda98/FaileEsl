@@ -9,26 +9,56 @@ import (
 
 //插入消息到redis消息队列  呼入->
 func InsertRedisMQForAgent(callAgent string, CallModel CallModel) {
-	fmt.Println("MQ..>CallAgent.>", callAgent)
-	insRedisByte, err := json.Marshal(CallModel)
-	if err != nil {
-		fmt.Println("String Convert Byte Err..>", err)
-	}
-	var Token string
-	MQStr := string(insRedisByte)
-	rows := db.SqlDB.QueryRow("select Token from call_userstatus where CCAgent = ?", callAgent)
-	rows.Scan(&Token)
-	fmt.Println(callAgent, " -> 添加消息队列：", MQStr, ".>token.>", Token)
-	if Token != "" {
-		res, err := db.ClientRedis.RPush("call_event_msg_list_"+Token, MQStr).Result()
+	if callAgent != "" {
+		switch CallModel.Event_type {
+		case "1301":
+			_, err := db.SqlDB.Query("update call_userstatus set CallType='in',CallerNumber=?,CalleeNumber=?,ChannelUUid=?,CallStatus='呼入响铃',CallRingTime=Now() where CCAgent=?",
+				CallModel.CallNumber, callAgent, CallModel.Calluuid, callAgent)
+			if err != nil {
+				fmt.Println("呼入坐席振铃..Err..>", err)
+			}
+		case "1303":
+			if CallModel.AgentStatus == "Logged Out" {
+				_, err := db.SqlDB.Query("update call_userstatus set CallStatus='注销状态',LoggedOutTime=Now() where CCAgent=?", callAgent)
+				if err != nil {
+					fmt.Println("修改状态为注销..Err..>", err)
+				}
+			} else if CallModel.AgentStatus == "Available" {
+				_, err := db.SqlDB.Query("update call_userstatus set CallStatus='空闲状态',AvailableTime=Now() where CCAgent=?", callAgent)
+				if err != nil {
+					fmt.Println("修改状态为空闲..Err..>", err)
+				}
+			} else if CallModel.AgentStatus == "On Break" {
+				_, err := db.SqlDB.Query("update call_userstatus set CallStatus='小休状态',OnBreakTime=Now() where CCAgent=?", callAgent)
+				if err != nil {
+					fmt.Println("修改状态为小休..Err..>", err)
+				}
+			}
+
+		}
+		fmt.Println("MQ..>CallAgent.>", callAgent)
+		insRedisByte, err := json.Marshal(CallModel)
 		if err != nil {
-			fmt.Println("RPush Err..>", err)
+			fmt.Println("String Convert Byte Err..>", err)
+		}
+		var Token string
+		MQStr := string(insRedisByte)
+		rows := db.SqlDB.QueryRow("select Token from call_userstatus where CCAgent = ?", callAgent)
+		rows.Scan(&Token)
+		fmt.Println(callAgent, " -> 添加消息队列：", MQStr, ".>token.>", Token)
+		if Token != "" {
+			res, err := db.ClientRedis.RPush("call_event_msg_list_"+Token, MQStr).Result()
+			if err != nil {
+				fmt.Println("RPush Err..>", err)
+			} else {
+				fmt.Println("[存入消息队列MQ]insert Redis Success! res >", res)
+				db.ClientRedis.Expire("call_event_msg_list_"+Token, time.Hour*2)
+			}
 		} else {
-			fmt.Println("[存入消息队列MQ]insert Redis Success! res >", res)
-			db.ClientRedis.Expire("call_event_msg_list_"+Token, time.Hour*2)
+			fmt.Println("token 为空，将不存入队列")
 		}
 	} else {
-		fmt.Println("token 为空，将不存入队列")
+		fmt.Println("坐席工号为空，将不存入队列")
 	}
 
 }
@@ -64,14 +94,14 @@ func InsertRedisMQForSipUser(SipUser string, CallModel CallModel) {
 				fmt.Println("修改电话销毁..Err..>", err)
 			}
 		case "1701":
-			sql := "update call_userstatus set CallStatus='转接中' where CCSipUser=?"
-			_, err := db.SqlDB.Query(sql, SipUser)
+			sql := "update call_userstatus set CallStatus='转接中',OtherChannelNumber=? where CCSipUser=?"
+			_, err := db.SqlDB.Query(sql, CallModel.CalledNumber, SipUser)
 			if err != nil {
 				fmt.Println("修改话机转接中..Err..>", err)
 			}
 		case "1702":
-			sql := "update call_userstatus set CallStatus='转接通话中' where CCSipUser=?"
-			_, err := db.SqlDB.Query(sql, SipUser)
+			sql := "update call_userstatus set CallStatus='转接通话中',OtherChannelNumber=? where CCSipUser=?"
+			_, err := db.SqlDB.Query(sql, CallModel.CalledNumber, SipUser)
 			if err != nil {
 				fmt.Println("修改话机转接通话中..Err..>", err)
 			}
@@ -86,6 +116,12 @@ func InsertRedisMQForSipUser(SipUser string, CallModel CallModel) {
 			_, err := db.SqlDB.Query(sql, SipUser)
 			if err != nil {
 				fmt.Println("修改话机转接取消..Err..>", err)
+			}
+		case "1707":
+			sql := "update call_userstatus set CallStatus='通话中',OtherChannelNumber='' where CCSipUser=?"
+			_, err := db.SqlDB.Query(sql, SipUser)
+			if err != nil {
+				fmt.Println("修改转接挂断..Err..>", err)
 			}
 		default:
 			fmt.Println("No Run SQL..>")
@@ -178,6 +214,7 @@ func SipSelectAgent(SipPhone string) (AgentId string) {
 	return
 }
 
+//通过坐席id查询sip账号信息
 func AgentSelectContact(AgentId string) (Contact string) {
 	fmt.Printf("查询%v数据 \n", AgentId)
 	row := db.SqlDB.QueryRow("select CCSipUser from call_userstatus where CCAgent = ?", AgentId)

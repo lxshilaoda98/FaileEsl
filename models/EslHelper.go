@@ -1,21 +1,48 @@
 package models
 
 import (
+	"encoding/xml"
 	"fmt"
-
-	"net"
-	"os"
-	"strconv"
-	"strings"
-	"time"
-
 	. "github.com/0x19/goesl"
 	"github.com/fsnotify/fsnotify"
 	log "github.com/go-fastlog/fastlog"
 	db "github.com/n1n1n1_owner/FaileEsl/bin/database"
 	"github.com/n1n1n1_owner/FaileEsl/bin/helper"
 	"github.com/spf13/viper"
+	"net"
+	"os"
+	"strconv"
+	"strings"
+	"time"
 )
+
+type Result struct {
+	XMLName        xml.Name `xml:"result"`
+	Text           string   `xml:",chardata"`
+	Interpretation struct {
+		Text       string `xml:",chardata"`
+		Mode       string `xml:"mode,attr"`
+		Grammar    string `xml:"grammar,attr"`
+		Confidence string `xml:"confidence,attr"`
+		Input      struct {
+			Text string `xml:",chardata"`
+			Mode string `xml:"mode,attr"`
+		} `xml:"input"`
+		Instance struct {
+			Text   string `xml:",chardata"`
+			Verify string `xml:"verify,attr"`
+			ID     struct {
+				Text string `xml:",chardata"`
+			} `xml:"id"`
+			Asrid struct {
+				Text string `xml:",chardata"`
+			} `xml:"asrid"`
+			Meaning struct {
+				Text string `xml:",chardata"`
+			} `xml:"meaning"`
+		} `xml:"instance"`
+	} `xml:"interpretation"`
+}
 
 type EslConfig struct {
 	fshost       string
@@ -176,7 +203,6 @@ func ConnectionEsl() (config *viper.Viper) {
 					CallModel.CalledNumber = callAgent
 
 					InsertRedisMQForSipUser(callAgent, CallModel)
-
 				case "sofia::register":
 					fmt.Printf("【注册成功账号】来自ip.>%v .注册sip账号：%v \n 联系地址：%v 域：%v \n 客户端：%v \n",
 						ipName, msg.Headers["from-user"], msg.Headers["contact"], msg.Headers["user_context"], msg.Headers["user-agent"])
@@ -231,20 +257,17 @@ func ConnectionEsl() (config *viper.Viper) {
 						callSessionUUid := msg.Headers["CC-Member-Session-UUID"]
 						fmt.Printf("呼叫振铃给：%v ,来电号码：%v \n", callAgent, callAni)
 						fmt.Printf("uuid：%v ,sessionId：%v \n", callUUid, callSessionUUid)
+						calledNumber := AgentSelectContact(callAgent) //通过坐席的工号查询对应的被叫信息
 						CallModel := CallModel{}
 						CallModel.Calluuid = callSessionUUid
 						CallModel.Event_type = "1301"
 						CallModel.Event_mess = "坐席振铃"
 						CallModel.Event_time = time.Now().UnixNano() / 1e6
 						CallModel.CallNumber = callAni
-						CallModel.CalledNumber = callAgent
+						CallModel.CalledNumber = calledNumber
 
 						InsertRedisMQForAgent(callAgent, CallModel)
-						_, err := db.SqlDB.Query("update call_userstatus set CallType='in',CallerNumber=?,CalleeNumber=?,ChannelUUid=?,CallStatus='呼入响铃',CallRingTime=Now() where CCAgent=?",
-							callAni, callAgent, callSessionUUid, callAgent)
-						if err != nil {
-							fmt.Println("呼入坐席振铃..Err..>", err)
-						}
+
 					case "bridge-agent-start":
 						CCAgent := msg.Headers["CC-Agent"]
 						_, err := db.SqlDB.Query("update call_userstatus set CallStatus='呼入应答',CallType='in',CallAnswerTime=Now() where CCAgent=?", CCAgent)
@@ -254,7 +277,8 @@ func ConnectionEsl() (config *viper.Viper) {
 					case "bridge-agent-end":
 						CCAgent := msg.Headers["CC-Agent"]
 						fmt.Println("呼入销毁===========================", CCAgent)
-						_, err := db.SqlDB.Query("update call_userstatus set CallStatus='呼叫销毁',CallType=NULL,CallHangupTime=Now() where CCAgent=?", CCAgent)
+						fmt.Println("不允许sql..>")
+						_, err := db.SqlDB.Query("update call_userstatus set CallStatus='呼叫销毁',CallType=NULL,CallHangupTime=Now() where CCAgent=? and 1=2", CCAgent)
 						if err != nil {
 							fmt.Println("呼入销毁..Err..>", err)
 						} else {
@@ -325,7 +349,7 @@ func ConnectionEsl() (config *viper.Viper) {
 							fmt.Println("接入失败..Err..>", err)
 						}
 					case "agent-status-change":
-						fmt.Println("坐席状态切换")
+
 						agentStatus := msg.Headers["CC-Agent-Status"]
 						callAgent := msg.Headers["CC-Agent"]
 						CallModel := CallModel{}
@@ -337,22 +361,6 @@ func ConnectionEsl() (config *viper.Viper) {
 						CallModel.AgentStatusMsg = StatusMSG
 
 						InsertRedisMQForAgent(callAgent, CallModel)
-						if agentStatus == "Logged Out" {
-							_, err := db.SqlDB.Query("update call_userstatus set CallStatus='注销状态',LoggedOutTime=Now() where CCAgent=?", callAgent)
-							if err != nil {
-								fmt.Println("修改状态为注销..Err..>", err)
-							}
-						} else if agentStatus == "Available" {
-							_, err := db.SqlDB.Query("update call_userstatus set CallStatus='空闲状态',AvailableTime=Now() where CCAgent=?", callAgent)
-							if err != nil {
-								fmt.Println("修改状态为空闲..Err..>", err)
-							}
-						} else if agentStatus == "On Break" {
-							_, err := db.SqlDB.Query("update call_userstatus set CallStatus='小休状态',OnBreakTime=Now() where CCAgent=?", callAgent)
-							if err != nil {
-								fmt.Println("修改状态为小休..Err..>", err)
-							}
-						}
 
 					case "agent-state-change":
 						fmt.Println("坐席在队列中的特定状态")
@@ -386,6 +394,45 @@ func ConnectionEsl() (config *viper.Viper) {
 
 					time.Sleep(time.Second * 5)
 					ConnectionEsl()
+				case "lua:MrcpEvent":
+					fmt.Println("mrcp事件..>")
+					uuid := msg.Headers["UUID"]
+					result := msg.Headers["MSG"]
+					fmt.Println(uuid)
+					fmt.Println("result", result)
+					if result != "" {
+						k := fmt.Sprintf("cdrNew_%v", uuid)
+						var v Result
+						err = xml.Unmarshal([]byte(result), &v)
+						if err != nil {
+							panic(err)
+						}
+						fmt.Println(v.Interpretation.Input.Text)
+						fmt.Println(v.Interpretation.Instance.Meaning)
+						val := v.Interpretation.Instance.Meaning.Text
+						key := fmt.Sprintf("asr_%v", uuid)
+
+						fmt.Println("k=", k, "..>v=", v.Interpretation.Instance.Meaning)
+
+						//插入单条，用来解析每次的说话数据
+						nodeKey := fmt.Sprintf("channelASR_%v", uuid)
+						_, err := db.ClientRedis.Set(nodeKey, val, time.Second*60).Result()
+						if err != nil {
+							fmt.Println("插入单ASR Err..>", err)
+						}
+						oldKey := db.ClientRedis.Get(key).String()
+						if oldKey != "" {
+							_, err := db.ClientRedis.Append(key, val).Result()
+							if err != nil {
+								fmt.Println("插入错误：", err)
+							}
+						} else {
+							_, err := db.ClientRedis.Set(key, val, time.Hour*12).Result()
+							if err != nil {
+								fmt.Println("插入错误：", err)
+							}
+						}
+					}
 				default:
 					log.Infof("未知子事件..>%s", msg)
 				}
@@ -438,6 +485,11 @@ func ConnectionEsl() (config *viper.Viper) {
 						CallModel.Event_mess = "转接振铃"
 						fmt.Println("通知", callerANI, "..>1701 转接振铃")
 						InsertRedisMQForSipUser(ttCall.CCSipUser, CallModel)
+
+						CallModel.OtherUUid = callerUniqueID
+						CallModel.Event_type = "1706"
+						CallModel.Event_mess = "转接呼叫"
+						InsertRedisMQForSipUser(callerCallerIDNumber, CallModel)
 					} else {
 						CallModel.Event_type = "1403"
 						CallModel.Event_mess = "被叫振铃"
@@ -515,56 +567,96 @@ func ConnectionEsl() (config *viper.Viper) {
 				callerNumber := msg.Headers["Caller-Callee-ID-Number"] // 被叫
 				callUUid := msg.Headers["Channel-Call-UUID"]
 				ha := helper.HaHangupV{}
-				CallModel := CallModel{}
+				callModel := CallModel{}
 				eventType := "1405"
 				eventMsg := "电话销毁"
 				otherUUid := msg.Headers["variable_bridge_uuid"]
 
 				callerHangupTime := time.Now().UnixNano() / 1e6 //拒绝时间
 
-				CallModel.Calluuid = msg.Headers["Channel-Call-UUID"]
-				CallModel.Event_time = callerHangupTime
-				CallModel.Event_type = eventType
-				CallModel.Event_mess = eventMsg
-				CallModel.CallHangupCause = ha.HaHangupCauseCause
-				CallModel.CallNumber = callNumber
-				CallModel.CalledNumber = callerNumber
-				CallModel.OtherUUid = otherUUid
+				callModel.Calluuid = msg.Headers["Channel-Call-UUID"]
+				callModel.Event_time = callerHangupTime
+				callModel.Event_type = eventType
+				callModel.Event_mess = eventMsg
+				callModel.CallHangupCause = ha.HaHangupCauseCause
+				callModel.CallNumber = callNumber
+				callModel.CalledNumber = callerNumber
+				callModel.OtherUUid = otherUUid
 
 				fmt.Println("挂机方向：", callDirection)
 
 				//destName:=msg.Headers["Caller-Caller-ID-Name"]
 				//if callDirection == "outbound" {}
-				CallModel.Calluuid = callUUid
-				if msg.Headers["Other-Leg-Caller-ID-Name"] == "Outbound Call" {
-					mqNumber = msg.Headers["Other-Leg-Caller-ID-Number"]
-				} else if msg.Headers["Other-Leg-Callee-ID-Name"] == "Outbound Call" {
-					mqNumber = msg.Headers["Other-Leg-Callee-ID-Number"]
+				callModel.Calluuid = callUUid
+
+				//------
+				if callDirection == "outbound" {
+					if msg.Headers["Caller-Callee-ID-Name"] == "Outbound Call" && msg.Headers["Caller-Caller-ID-Name"] != "Outbound Call" {
+						//mqNumber=msg.Headers["Caller-Callee-ID-Number"]
+						if msg.Headers["Caller-Callee-ID-Number"] == msg.Headers["Caller-Destination-Number"] {
+							mqNumber = msg.Headers["Caller-Callee-ID-Number"]
+						} else if msg.Headers["Caller-Callee-ID-Number"] != msg.Headers["Caller-Destination-Number"] {
+							mqNumber = msg.Headers["Caller-Destination-Number"]
+						} else {
+							mqNumber = msg.Headers["Caller-Caller-ID-Number"]
+						}
+					} else if msg.Headers["Caller-Caller-ID-Name"] == "Outbound Call" && msg.Headers["Caller-Caller-ID-Name"] == "Outbound Call" {
+						mqNumber = msg.Headers["Caller-Caller-ID-Number"]
+						var Transfer = 0
+						rows := db.SqlDB.QueryRow("select count(*) as Transfer from call_userstatus where CallType='in' and CCSipUser = ? and CallStatus='转接通话中'", mqNumber)
+						rows.Scan(&Transfer)
+						if Transfer > 0 {
+							fmt.Println("发现是转接电话,通知发起者-->Caller-ANI")
+							fmt.Println(msg.Headers["Caller-Callee-ID-Number"], "确认转接..>")
+							var QrCallModel = CallModel{}
+							QrCallModel.Event_type = "1704"
+							QrCallModel.Event_mess = "确认转接"
+							InsertRedisMQForSipUser(msg.Headers["Caller-Callee-ID-Number"], QrCallModel)
+
+							fmt.Println(msg.Headers["Caller-Caller-ID-Number"], "转接销毁..>")
+							callModel.Event_type = "1703"
+							callModel.Event_mess = "转接销毁"
+							mqNumber = msg.Headers["Caller-Caller-ID-Number"]
+						} else {
+							if msg.Headers["Caller-Callee-ID-Number"] == msg.Headers["Caller-Destination-Number"] {
+								mqNumber = msg.Headers["Caller-Callee-ID-Number"]
+							} else if msg.Headers["Caller-Callee-ID-Number"] != msg.Headers["Caller-Destination-Number"] {
+								mqNumber = msg.Headers["Caller-Destination-Number"]
+							} else {
+								mqNumber = msg.Headers["Caller-Caller-ID-Number"]
+							}
+						}
+					}
 				} else {
-					mqNumber = msg.Headers["Other-Leg-Destination-Number"]
-					if mqNumber == "" {
+					if msg.Headers["Caller-Caller-ID-Name"] == "Outbound Call" {
 						mqNumber = msg.Headers["Caller-Callee-ID-Number"]
+					} else {
+						mqNumber = msg.Headers["Caller-Caller-ID-Number"]
 					}
 				}
-				fmt.Println("真实挂机号码:", mqNumber)
-				zfNumber := msg.Headers["Caller-Caller-ID-Number"]
-				fmt.Println("查找转接号码：", zfNumber)
-				var Istrasfer = 0
-				rows := db.SqlDB.QueryRow("select count(*) as count from call_userstatus where CCSipUser=? and CallStatus='转接通话中' ", zfNumber)
-				rows.Scan(&Istrasfer)
-				fmt.Println("是否存在通话：", Istrasfer)
-				if Istrasfer > 0 {
-					CallModel.Event_type = "1703"
-					CallModel.Event_mess = "转接销毁"
-					fmt.Println("通知", zfNumber, "..>1703 转接销毁")
-					mqNumber = zfNumber
-				} else {
-					fmt.Println("通知", mqNumber, "..>1405 电话销毁")
+
+				//------
+				callModel.Calluuid = callUUid
+				fmt.Println("通知", mqNumber, "..>1405 电话销毁")
+				//通过销毁的号码查找是否是转接挂断
+				var CallerNumber = ""
+				var CalleeNumber = ""
+				var CallType = ""
+				rows := db.SqlDB.QueryRow("select CallerNumber,CalleeNumber,CallType from call_userstatus where OtherChannelNumber = ? and CallStatus in ('转接通话中','转接中') ", mqNumber)
+				rows.Scan(&CallerNumber, &CalleeNumber, &CallType)
+				if CallerNumber != "" {
+					var QrCallModel = CallModel{}
+					QrCallModel.Event_type = "1707"
+					QrCallModel.Event_mess = "转接挂断"
+					if CallType == "in" {
+						InsertRedisMQForSipUser(CalleeNumber, QrCallModel)
+					} else {
+						InsertRedisMQForSipUser(CallerNumber, QrCallModel)
+					}
+
 				}
 
-				CallModel.Calluuid = callUUid
-				fmt.Println("通知", mqNumber, "..>1405 电话销毁")
-				InsertRedisMQForSipUser(mqNumber, CallModel)
+				InsertRedisMQForSipUser(mqNumber, callModel)
 			case "CHANNEL_HOLD":
 				callUUid := msg.Headers["Channel-Call-UUID"]
 				CallModel := CallModel{}
