@@ -149,7 +149,7 @@ func ConnectionEsl() (config *viper.Viper) {
 		for {
 			msg, err := client.ReadMessage()
 			//fmt.Println("msg=================",msg)
-			log.Info(msg)
+			//log.Info(msg)
 			if err != nil {
 				// If it contains EOF, we really dont care...
 				if !strings.Contains(err.Error(), "EOF") && err.Error() != "unexpected end of JSON input" {
@@ -433,9 +433,15 @@ func ConnectionEsl() (config *viper.Viper) {
 							}
 						}
 					}
+				case "lua:MrcpEventForChannel":
+					fmt.Println("asr语音识别:", msg)
 				default:
 					log.Infof("未知子事件..>%s", msg)
 				}
+			case "DETECTED_SPEECH":
+				fmt.Println("语音识别总事件：", msg)
+			case "RECV_RTCP_MESSAGE":
+				fmt.Println("发送rtcp", msg)
 			case "CHANNEL_CREATE":
 				CallModel := CallModel{}
 
@@ -688,6 +694,7 @@ func ConnectionEsl() (config *viper.Viper) {
 					fmt.Println("修改状态为保持..Err..>", err)
 				}
 			default:
+				fmt.Println("未知事件：", msg.Headers["Event-Name"])
 				log.Infof("Got new message: %s", msg)
 			}
 		}
