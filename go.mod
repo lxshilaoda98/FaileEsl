@@ -6,6 +6,7 @@ require (
 	github.com/0x19/goesl v0.0.0-20191107044804-3efcc2f41ccb
 	github.com/denisenkom/go-mssqldb v0.0.0-20200910202707-1e08a3fab204
 	github.com/fsnotify/fsnotify v1.4.7
+	github.com/go-basic/uuid v1.0.0 // indirect
 	github.com/go-fastlog/fastlog v0.0.0-20181211062326-de7e639238fd
 	github.com/go-redis/redis v6.15.9+incompatible
 	github.com/go-sql-driver/mysql v1.5.0

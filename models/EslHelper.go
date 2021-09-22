@@ -61,19 +61,21 @@ type SipModel struct {
 }
 
 type CallModel struct {
-	OtherUUid       string `json:"otheruuid"`
-	Calluuid        string `json:"calluuid"`
-	Event_type      string `json:"event_type"`
-	Event_mess      string `json:"event_mess"`
-	Event_time      int64  `json:"event_time"`
-	CallNumber      string `json:"call_number"`
-	CalledNumber    string `json:"called_number"`
-	CallHangupCause string `json:"call_hangup_cause"`
-	AgentStatus     string `json:"agent_status"`
-	AgentStatusMsg  string `json:"agent_status_msg"`
-	AgentState      string `json:"agent_state"`
-	AgentStateMsg   string `json:"agent_state_msg"`
-	IsTransfer      string `json:"is_transfer"`
+	OtherUUid                       string `json:"otheruuid"`
+	Calluuid                        string `json:"calluuid"`
+	Event_type                      string `json:"event_type"`
+	Event_mess                      string `json:"event_mess"`
+	Event_time                      int64  `json:"event_time"`
+	CallNumber                      string `json:"call_number"`
+	CalledNumber                    string `json:"called_number"`
+	CallHangupCause                 string `json:"call_hangup_cause"`
+	AgentStatus                     string `json:"agent_status"`
+	AgentStatusMsg                  string `json:"agent_status_msg"`
+	AgentState                      string `json:"agent_state"`
+	AgentStateMsg                   string `json:"agent_state_msg"`
+	IsTransfer                      string `json:"is_transfer"`
+	CallHangupCauseMSG              string `json:"call_hangup_cause_msg"`
+	Variable_sip_hangup_disposition string `json:"variable_sip_hangup_disposition"`
 }
 
 type TransferCall struct {
@@ -566,30 +568,38 @@ func ConnectionEsl() (config *viper.Viper) {
 					InsertRedisMQForSipUser(callerNumber, CallModel)
 				}
 			case "CHANNEL_DESTROY":
-				//fmt.Println("挂机..Msg..>",msg)
+				fmt.Println("挂机..Msg..>", msg)
+				ha := helper.HaHangupV{}
 				mqNumber := msg.Headers["Caller-Caller-ID-Number"]
 				callDirection := msg.Headers["Call-Direction"]
 				callNumber := msg.Headers["Caller-ANI"]                // 主叫号码
 				callerNumber := msg.Headers["Caller-Callee-ID-Number"] // 被叫
 				callUUid := msg.Headers["Channel-Call-UUID"]
-				ha := helper.HaHangupV{}
+				hangupdest := msg.Headers["variable_sip_hangup_disposition"]
+				hangupCause := msg.Headers["variable_hangup_cause"]
+
+				hangupMSG := ha.ErrConvertCN(msg.Headers["variable_hangup_cause"]).HaHangupCauseCause
+
 				callModel := CallModel{}
 				eventType := "1405"
 				eventMsg := "电话销毁"
 				otherUUid := msg.Headers["variable_bridge_uuid"]
 
 				callerHangupTime := time.Now().UnixNano() / 1e6 //拒绝时间
+				callModel.Variable_sip_hangup_disposition = hangupdest
+				callModel.CallHangupCause = hangupCause
+				callModel.CallHangupCauseMSG = hangupMSG
 
 				callModel.Calluuid = msg.Headers["Channel-Call-UUID"]
 				callModel.Event_time = callerHangupTime
 				callModel.Event_type = eventType
 				callModel.Event_mess = eventMsg
-				callModel.CallHangupCause = ha.HaHangupCauseCause
 				callModel.CallNumber = callNumber
 				callModel.CalledNumber = callerNumber
 				callModel.OtherUUid = otherUUid
 
 				fmt.Println("挂机方向：", callDirection)
+				fmt.Println("挂机描述：", callModel.CallHangupCause)
 
 				//destName:=msg.Headers["Caller-Caller-ID-Name"]
 				//if callDirection == "outbound" {}

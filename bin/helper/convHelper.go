@@ -8,7 +8,7 @@ type HaHangupV struct {
 	HaHangupCauseDes     string
 }
 
-func ErrConvertCN(key string) (HaHangupV HaHangupV) {
+func (h HaHangupV) ErrConvertCN(key string) (HaHangupV HaHangupV) {
 	switch key {
 	case "UNSPECIFIED":
 		HaHangupV.HaHangupCauseCode = 0
@@ -357,8 +357,8 @@ func ErrConvertCN(key string) (HaHangupV HaHangupV) {
 		HaHangupV.HaHangupCauseCode = 487
 		HaHangupV.HaHangupCauseSipCode = "487"
 		HaHangupV.HaHangupCauseName = "ORIGINATOR_CANCEL"
-		HaHangupV.HaHangupCauseCause = ""
-		HaHangupV.HaHangupCauseDes = ""
+		HaHangupV.HaHangupCauseCause = "主叫取消"
+		HaHangupV.HaHangupCauseDes = "主叫取消"
 
 	case "CRASH":
 		HaHangupV.HaHangupCauseCode = 500

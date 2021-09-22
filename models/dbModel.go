@@ -81,15 +81,53 @@ func InsertRedisMQForSipUser(SipUser string, CallModel CallModel) {
 			if err != nil {
 				fmt.Println("修改话机接起..Err..>", err)
 			}
+		case "1403":
+			uuid := GetUUid()
+			agentid := SipSelectAgent(CallModel.CallNumber)
+			if agentid != "" {
+				//如果话机振铃 就去插入对应数据.
+				insertSq := "insert into call_makecall (uuid,CallerNumber,CalleeNumber,ChannelUUid,TPAnswerTime,CalleeRingTime,CCAgent) values(?,?,?,?,?,?,?)"
+				_, err := db.SqlDB.Exec(insertSq, uuid, CallModel.CallNumber, CallModel.CalledNumber, CallModel.Calluuid, time.Now().Format("2006-01-02 15:04:15"), time.Now().Format("2006-01-02 15:04:15"), agentid)
+				if err != nil {
+					fmt.Println("插入呼叫数据失败:Err.>", err)
+				} else {
+					fmt.Println("插入成功!")
+				}
+			} else {
+				fmt.Println("没有找到对应的人员信息，无需添加数据！")
+			}
 		case "1404":
+			updateMakeSql := "update call_makecall set CalleeAnswerTime = Now() where ChannelUUid = ? "
+			_, err := db.SqlDB.Exec(updateMakeSql, CallModel.Calluuid)
+			if err != nil {
+				fmt.Println("修改1404呼叫数据失败:Err.>", err)
+			} else {
+				fmt.Println("1404修改成功!")
+			}
+
 			sql := "update call_userstatus set CalleeAnswerTime=Now(),CallStatus='通话中',ChannelUUid=?,CallerNumber=?,CalleeNumber=? where CCSipUser=?"
-			_, err := db.SqlDB.Query(sql, CallModel.Calluuid, CallModel.CallNumber, CallModel.CalledNumber, SipUser)
+			_, err = db.SqlDB.Query(sql, CallModel.Calluuid, CallModel.CallNumber, CallModel.CalledNumber, SipUser)
 			if err != nil {
 				fmt.Println("修改被叫接起..Err..>", err)
 			}
 		case "1405":
+			updateMakeSql := "update call_makecall set CallHangupTime = Now(),Hangup_Dst=?,Hangup_Cause=?,Hangup_Cause_Msg=? where ChannelUUid = ?"
+			_, err := db.SqlDB.Exec(updateMakeSql, CallModel.Variable_sip_hangup_disposition, CallModel.CallHangupCause, CallModel.CallHangupCauseMSG, CallModel.Calluuid)
+			if err != nil {
+				fmt.Println("修改1405呼叫数据失败:Err.>", err)
+			} else {
+				fmt.Println("1405修改成功!")
+				updateMakeSql := "update call_makecall set TalkTime=CallHangupTime-CalleeAnswerTime where ChannelUUid=?"
+				_, err = db.SqlDB.Exec(updateMakeSql, CallModel.Calluuid)
+				if err != nil {
+					fmt.Println("计算通话时长异常:Err.>", err)
+				} else {
+					fmt.Println("完成通话数据整理!")
+				}
+			}
+
 			sql := "update call_userstatus set OnBreakKey = 1,OnBreakVal='话后',OnBreakTime=Now(),CallStatus='小休状态' where CCSipUser = ?"
-			_, err := db.SqlDB.Query(sql, SipUser)
+			_, err = db.SqlDB.Query(sql, SipUser)
 			if err != nil {
 				fmt.Println("修改电话销毁..Err..>", err)
 			}
